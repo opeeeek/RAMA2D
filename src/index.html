@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAMA2D</title>
+<style id="appcss">/*@@BASECSS@@*/
+/*@@APPCSS@@*/</style>
+</head>
+<body>
+<header id="top">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="3" width="26" height="26" rx="3" style="fill:var(--brand1);stroke:var(--brand2)"/><path d="M8 25V10h16v15" style="fill:none;stroke:var(--brand4);stroke-width:2.6;stroke-linejoin:round"/><path d="M8 10l8 6 8-6" style="fill:none;stroke:var(--brand3);stroke-width:1.6"/><path d="M5 26h6M21 26h6" style="stroke:var(--brand4);stroke-width:2"/></svg>
+    <b>RAMA2D</b><span class="tag">PN-EN 1990 · 1992 · 1993 · 1995</span>
+  </div>
+  <input id="projName" title="Nazwa projektu" aria-label="Nazwa projektu" spellcheck="false">
+  <span id="fileName"></span>
+  <div class="tb">
+    <button data-act="new" title="Nowy projekt (Ctrl+N)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><span class="lbl">Nowy</span></button>
+    <button data-act="open" title="Otwórz projekt (Ctrl+O)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg><span class="lbl">Otwórz</span></button>
+    <button data-act="save" title="Zapisz (Ctrl+S)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg><span class="lbl">Zapisz</span></button>
+    <button data-act="saveas" title="Zapisz jako (Ctrl+Shift+S)"><span class="lbl">Zapisz jako…</span></button>
+    <span class="sep"></span>
+    <button data-act="undo" title="Cofnij (Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button data-act="redo" title="Ponów (Ctrl+Y)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    <span class="sep"></span>
+    <button data-act="print" title="Drukuj raport / zapisz do PDF (Ctrl+P)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="1"/><path d="M7 14h10v7H7z"/></svg><span class="lbl">Drukuj / PDF</span></button>
+    <button data-act="exporthtml" title="Zapisz raport jako plik HTML"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg><span class="lbl">Raport HTML</span></button>
+    <button data-act="about" title="O programie" aria-label="O programie">?</button>
+  </div>
+  <div id="status">…</div>
+</header>
+<main>
+  <section id="out">
+    <nav class="tabs" id="tabs">
+      <button data-tab="model" class="on">Model i statyka</button>
+      <button data-tab="loads">Obciążenia i kombinacje</button>
+      <button data-tab="res">Wyniki</button>
+      <button data-tab="stab">Stateczność</button>
+      <button data-tab="des">Wymiarowanie</button>
+      <span class="tsep"></span>
+      <button data-tab="ZB" class="modtab"><i class="mdot dzb"></i>Żelbet</button>
+      <button data-tab="ST" class="modtab"><i class="mdot dst"></i>Stal</button>
+      <button data-tab="DR" class="modtab"><i class="mdot ddr"></i>Drewno</button>
+      <span class="tsep"></span>
+      <button data-tab="report">Raport</button>
+    </nav>
+    <div class="pane on modelpane" id="p-model">
+      <div class="mwrap">
+        <div class="mtools" id="mtools"></div>
+        <div class="mcanvas">
+          <div class="mbar" id="mbar"></div>
+          <div class="cvwrap" id="cvwrap"></div>
+          <div class="mlegend" id="mlegend"></div>
+          <div class="mstat"><input id="cmdline" class="txt" placeholder="współrzędne: x; z   @dx; dz   <L; kąt  (Enter)" spellcheck="false" autocomplete="off"><span id="mstatTxt"></span></div>
+        </div>
+        <aside class="minsp" id="insp"></aside>
+      </div>
+    </div>
+    <div class="pane" id="p-loads"></div>
+    <div class="pane" id="p-res"></div>
+    <div class="pane" id="p-stab"></div>
+    <div class="pane" id="p-des"></div>
+    <div class="pane modpane" id="p-ZB"></div>
+    <div class="pane modpane" id="p-ST"></div>
+    <div class="pane modpane" id="p-DR"></div>
+    <div class="pane" id="p-report"></div>
+  </section>
+</main>
+<div id="pop"></div>
+<div id="modal" role="dialog" aria-modal="true"></div>
+<div id="toast" role="status"></div>
+<input type="file" id="fileIn" accept=".rama2d,.json,application/json" hidden>
+<!--@@SCRIPTS@@-->
+</body>
+</html>

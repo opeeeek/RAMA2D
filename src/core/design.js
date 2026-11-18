@@ -364,7 +364,10 @@ D.colSchema = function (P, R, el) {
   const kb = endK(nb, 'b'), kt = endK(nt, 'g');
   // przechyłowość: węzeł górny bez podpory poziomej i bez stężeń (prętów kratowych) w układzie
   const braced = P.bars.some(b => b.type === 'truss') || P.supports.some(sp => sp.node !== nb && (sp.ux || sp.kx > 0) && M().node(P, sp.node).z > M().node(P, nb).z + 1e-6);
-  return { O, L, kb, kt, braced, sec: s, props: p, nb, nt };
+  // podparcie na fundamencie (podpora zewnętrzna w węźle dolnym) i słup kondygnacji wyższej (ciągłość zbrojenia, podstawa)
+  const found = T.sup.has(nb);
+  const colAbove = (T.at.get(nt) || []).some(b => !excl.has(b.id) && b.type !== 'truss' && M().roleOf(P, b) === 'col' && collinear(P, b, O.seq[0].bar));
+  return { O, L, kb, kt, braced, sec: s, props: p, nb, nt, found, colAbove };
 };
 const kClamp = k => (k === Infinity ? 100 : Math.max(0.1, Math.min(100, r3(k))));
 MAP.ZB_col = function (P, R, el, prev) {
@@ -379,7 +382,8 @@ MAP.ZB_col = function (P, R, el, prev) {
   else { S.geom.shape = 'rect'; S.geom.b = +s.b; S.geom.h = +s.h; }
   // płaszczyzna ramy = płaszczyzna „h” (M_y); prostopadła – ustawienia modułu
   S.buck.same = false;
-  if (!prev) { S.buck.y.sch = sch.braced ? 'pp' : (sch.kt.k === Infinity ? 'cant' : 'ffs'); S.buck.y.mode = sch.braced || sch.kt.k !== Infinity ? 'k' : 'auto'; S.buck.z.sch = 'pp'; S.buck.z.mode = 'auto'; }
+  if (!prev) { S.buck.y.sch = sch.braced ? 'pp' : (sch.kt.k === Infinity ? 'cant' : 'ffs'); S.buck.y.mode = sch.braced || sch.kt.k !== Infinity ? 'k' : 'auto'; S.buck.z.sch = 'pp'; S.buck.z.mode = 'auto';
+    S.det.base = sch.found ? 'found' : 'col'; S.det.top = sch.colAbove ? 'cont' : 'anch'; }
   S.buck.y.k1 = kClamp(sch.kb.k); S.buck.y.k2 = kClamp(sch.kt.k);
   // obciążenia: siły na końcach słupa z analizy (przypadki) – kompensacja schematu modułu (M w module = M z ramy w każdym punkcie)
   const items = [], schY = S.buck.y.sch;
@@ -478,6 +482,7 @@ MAP.ST_col = function (P, R, el, prev) {
   S.material.gatunek = s.cls;
   // płaszczyzna ramy = x–z (M_y); wycięty słup: podstawa utwierdzona, głowica swobodna – siły z ramy na końcu (statyka dokładna)
   S.podpory.dol.y = 'utw'; S.podpory.gora.y = 'swob'; S.schemat = 'wlasny';
+  if (!prev) S.podstawa.aktywna = !!sch.found;              // podstawa (blacha, kotwy) – tylko słup na fundamencie
   S.analiza.metoda = 'I';                                   // I rząd + elementy wg 6.3 z L_cr z analizy wyboczeniowej ramy (5.2.2(8))
   const Lcr = colLcr(P, R, el, sch);
   S.analiza.nadp.LcrY = Lcr ? r3(Lcr) : ''; S.analiza.nadp.muY = '';
@@ -628,8 +633,7 @@ D.sectionFromModule = function (P, el, st) {
     else if (st.geom.type === 'round') Object.assign(s, { shape: 'round', D: +st.geom.d });
     else if (st.geom.type === 'rect') Object.assign(s, { shape: 'rect', b: +st.geom.b, h: +st.geom.h, n: 1 });
   }
-  const key = o => JSON.stringify(['mat', 'cls', 'shape', 'b', 'h', 'beff', 'hf', 'D', 't', 'n', 'prof'].map(k => k === 'prof' ? (o.prof ? JSON.stringify(Object.keys(o.prof).sort().map(q => [q, String(o.prof[q])])) : '') : (o[k] === undefined ? '' : String(o[k]))));
-  if (key(s) === key(cur)) return null;
+  if (secKey(s) === secKey(cur)) return null;
   return s;
 };
 // zastosowanie przekroju z modułu w modelu: gdy przekrój jest współdzielony z prętami spoza elementu – nowy przekrój
@@ -642,8 +646,84 @@ D.applySection = function (P, el, s) {
   P.sections.push(ns); bars.forEach(b => { b.sec = ns.id; });
   return ns;
 };
+const secKey = o => JSON.stringify(['mat', 'cls', 'shape', 'b', 'h', 'beff', 'hf', 'D', 't', 'n', 'rot', 'kEI', 'prof'].map(k => k === 'prof' ? (o.prof ? JSON.stringify(Object.keys(o.prof).filter(q => q !== 'Hcol').sort().map(q => [q, String(o.prof[q])])) : '') : (o[k] === undefined || o[k] === '' ? '' : String(o[k]))));
+D.secKey = secKey;
+// przekroje docelowe prętów elementu wg danych modułu (BelkaŻB / BelkaDR – wymiary osobno w przęsłach)
+D.targetSections = function (P, el, st) {
+  const base = D.sectionFromModule(P, el, st) || (() => { const c = clone(M().sec(P, M().bar(P, el.bars[0]).sec)); delete c.id; delete c.name; return c; })();
+  const out = el.bars.map(() => base);
+  const sch = el.sch;
+  const perSpan = el.kind === 'beam' && sch && sch.O && st.scheme === 'cont' && (el.mod === 'ZB' ? st.cont && Array.isArray(st.cont.geoSpans) : st.segGeo && Object.keys(st.segGeo).length);
+  if (!perSpan) return out;
+  // granice odcinków modułu (wsporniki, przęsła) w układzie ciągu
+  const C = st.cont, bnd = []; let x = 0;
+  if (+C.cantL > 0) { bnd.push({ x0: 0, x1: +C.cantL, span: null, seg: 0 }); x = +C.cantL; }
+  C.spans.forEach((L, i) => { bnd.push({ x0: x, x1: x + +L, span: i, seg: bnd.length }); x += +L; });
+  if (+C.cantR > 0) bnd.push({ x0: x, x1: x + +C.cantR, span: null, seg: bnd.length });
+  el.bars.forEach((id, k) => {
+    const q = sch.O.seq.find(s => s.bar.id === id); if (!q) return;
+    const i = sch.O.seq.indexOf(q), xm = (sch.O.xs[i] + sch.O.xs[i + 1]) / 2;
+    const sg = bnd.find(b => xm >= b.x0 - 1e-6 && xm <= b.x1 + 1e-6); if (!sg) return;
+    let b = '', h = '';
+    if (el.mod === 'ZB' && sg.span !== null) { const g = C.geoSpans[sg.span] || {}; b = g.b; h = g.h; }
+    if (el.mod === 'DR') { const g = st.segGeo[sg.seg] || {}; b = g.b; h = g.h; }
+    if ((+b > 0 || +h > 0) && base.shape !== 'T' && base.shape !== 'circ' && base.shape !== 'ring') out[k] = Object.assign({}, base, { b: +b > 0 ? +b : base.b, h: +h > 0 ? +h : base.h });
+  });
+  return out;
+};
+// zastosowanie przekrojów z modułu w modelu; zwraca opis zmian lub null
+D.applyModuleSections = function (P, el, st) {
+  const tgt = D.targetSections(P, el, st), bars = el.bars.map(id => M().bar(P, id));
+  const changed = bars.map((b, k) => b && secKey(M().sec(P, b.sec) || {}) !== secKey(tgt[k]));
+  if (!changed.some(Boolean)) return null;
+  const groups = new Map(); bars.forEach((b, k) => { if (!b || !changed[k]) return; const key = secKey(tgt[k]); if (!groups.has(key)) groups.set(key, { s: tgt[k], bars: [] }); groups.get(key).bars.push(b); });
+  const labels = [];
+  groups.forEach(({ s, bars: bs }) => {
+    const curIds = new Set(bs.map(b => b.sec));
+    // przekrój używany wyłącznie przez te pręty – zmiana w miejscu (zachowuje nazwę)
+    if (curIds.size === 1) { const cid = [...curIds][0], users = P.bars.filter(b => b.sec === cid); if (users.every(u => bs.includes(u))) { const cur = M().sec(P, cid); Object.assign(cur, clone(s), { id: cur.id, name: cur.name, kEI: cur.kEI }); labels.push(SEC().fullLabel(cur)); return; } }
+    // istniejący przekrój o tych samych parametrach albo nowy
+    let ex = P.sections.find(q => secKey(q) === secKey(Object.assign({}, s, { kEI: q.kEI })));
+    if (!ex) { ex = Object.assign(clone(s), { id: 's' + (P.seq.sec++), name: el.name }); P.sections.push(ex); }
+    bs.forEach(b => { b.sec = ex.id; }); labels.push(SEC().fullLabel(ex));
+  });
+  return labels.join(', ');
+};
 // nazwa elementu z modułu
 D.nameFromModule = (el, st) => (el.mod === 'ST' ? st.meta.nazwa : st.meta.name) || el.name;
+
+/* ------------------------------------------------------------ geometria z modułu → model */
+// zmiana rozpiętości przęseł / wsporników belki albo wysokości słupu w module: węzły modelu przesuwane wzdłuż osi elementu
+// (odcinkami liniowo – cała część układu za zmienionym przęsłem przesuwa się, ramy pozostają regularne)
+function moduleSpans(el, st) {
+  if (el.kind === 'col') return { L: el.mod === 'ST' ? +st.geom.H : +st.geom.L };
+  if (el.mod === 'ST') return { spans: (st.geom.przesla || []).map(Number), cL: +st.geom.wspL || 0, cR: +st.geom.wspP || 0 };
+  if (st.scheme === 'cont') return { spans: st.cont.spans.map(Number), cL: +st.cont.cantL || 0, cR: +st.cont.cantR || 0 };
+  if (st.scheme === 'ss') return { spans: [+st.geom.L], cL: 0, cR: 0 };
+  return { cant: +st.geom.L };
+}
+D.geometryFromModule = function (P, R, el, st) {
+  const sch = el.sch; if (!sch || !sch.O) return false;
+  const O = sch.O, ms = moduleSpans(el, st), tol = 1e-4;
+  let oldB, newB;
+  if (el.kind === 'col') { if (!(ms.L > 0) || Math.abs(ms.L - sch.L) < tol) return false; oldB = [0, sch.L]; newB = [0, ms.L]; }
+  else {
+    const n = sch.sups.length;
+    if (ms.cant !== undefined) { if (sch.spans.length) return false; const flip = sch.sups[0].x > 1e-6; if (Math.abs(ms.cant - O.L) < tol) return false; if (flip) return false; oldB = [0, O.L]; newB = [0, ms.cant]; }
+    else {
+      if (!ms.spans || ms.spans.length !== sch.spans.length) return false;
+      const same = ms.spans.every((v, i) => Math.abs(v - sch.spans[i]) < tol) && Math.abs(ms.cL - sch.cantL) < tol && Math.abs(ms.cR - sch.cantR) < tol;
+      if (same || !ms.spans.every(v => v > 0.05)) return false;
+      oldB = [0].concat(sch.sups.map(q => q.x), [O.L]); newB = [0];
+      let x = ms.cL; newB.push(x); ms.spans.forEach(v => { x += v; newB.push(x); }); newB.push(x + ms.cR);
+      if (n !== ms.spans.length + 1) return false;
+    }
+  }
+  const N0 = M().node(P, O.nodes[0]), t = [O.c, O.s];
+  const map = s => { if (s <= oldB[0]) return s; for (let i = 0; i < oldB.length - 1; i++) { const a = oldB[i], b = oldB[i + 1]; if (s <= b + 1e-9) return b - a > 1e-9 ? newB[i] + (s - a) * (newB[i + 1] - newB[i]) / (b - a) : newB[i]; } return s + newB[newB.length - 1] - oldB[oldB.length - 1]; };
+  P.nodes.forEach(nd => { const s = (nd.x - N0.x) * t[0] + (nd.z - N0.z) * t[1]; const d = map(s) - s; if (Math.abs(d) > 1e-12) { nd.x = Math.round((nd.x + d * t[0]) * 1e6) / 1e6; nd.z = Math.round((nd.z + d * t[1]) * 1e6) / 1e6; } });
+  return true;
+};
 
 /* ------------------------------------------------------------ kontrola wytężenia silnikiem modułu */
 D.check = function (el) {
@@ -652,15 +732,20 @@ D.check = function (el) {
   let r;
   try { r = el.mod === 'ST' ? E.J.run(el.st) : E.calc(el.st); } catch (e) { return { err: e.message, eta: null, ok: false }; }
   const errs = (r.errors || []).length;
-  let eta = 0, worst = null, fails = 0;
+  // wytężenie: podsumowanie liczone przez moduł (jak w jego pasku stanu), w razie braku – maksimum ze sprawdzeń (bez informacyjnych)
+  const sumEta = [r.maxUtil, r.uMax, r.maxEta].find(v => typeof v === 'number' && isFinite(v));
+  let eta = 0, worst = null, wu = -1, fails = 0;
   (r.checks || []).forEach(c => {
-    const u = c.util !== undefined ? c.util : c.ratio !== undefined ? c.ratio : c.eta;
+    const u = c.util !== undefined ? c.util : c.ratio !== undefined ? c.ratio : c.b && c.b.r !== undefined ? c.b.r : c.eta;
     const st = c.status || (c.ok === false ? 'fail' : c.ok === true ? 'ok' : '');
-    if (st === 'info' || st === 'skip') return;
-    if (isFinite(u) && u > eta) { eta = u; worst = c; }
+    if (c.info === true || st === 'info' || st === 'skip') return;
+    if (typeof u === 'number' && isFinite(u) && u > wu) { wu = u; worst = c; }
     if (st === 'fail' || c.ok === false || c.pass === false) fails++;
   });
-  return { eta, worst: worst ? (worst.name || worst.nazwa || worst.opis || worst.id || '') : '', fails, errors: r.errors || [], ok: !errs && !fails, n: (r.checks || []).length };
+  eta = sumEta !== undefined ? sumEta : Math.max(0, wu);
+  if (typeof r.nFail === 'number') fails = r.nFail; else if (typeof r.fails === 'number') fails = r.fails;
+  const ok = !errs && !fails && r.ok !== false && eta <= 1 + 1e-9;
+  return { eta, worst: worst ? (worst.name || worst.n || worst.nazwa || worst.opis || worst.id || '') : '', fails, errors: r.errors || [], ok, n: (r.checks || []).length };
 };
 
 root.RDES = D;
