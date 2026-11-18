@@ -50,6 +50,15 @@ liczba przęseł, wsporniki, podpory, przeguby, obciążenia, warunki podparcia 
    właściwego modułu.
 7. **Moduły** (zakładki Żelbet / Stal / Drewno, przełącznik Belki / Słupy) – pełne, oryginalne programy
    z zaimportowanym elementem; pasek nad modułem pokazuje powiązanie z modelem, schemat, podpory i uwagi.
+8. **Element zdefiniowany w module → model** – przycisk **+ Nowa belka / + Nowy słup** w module tworzy element
+   w modelu (z prawej strony układu, w pustym projekcie – w początku układu) i wiąże go z modułem: schemat
+   (np. belka ciągła 5 + 6 m), wsporniki, podpory, przeguby, przekroje (także różne w przęsłach), materiał
+   i obciążenia zadane w module przenoszą się do modelu i statyki automatycznie, przy każdej zmianie. Moduł
+   otwarty **bez powiązania z modelem** ma przycisk **➜ Przenieś do modelu** – element z całym schematem
+   i obciążeniami trafia do modelu, a moduł zostaje z nim powiązany. Obciążenia modułu stają się przypadkami
+   modelu (stałe – przypadek G, zmienne i wyjątkowe – nowe przypadki z kategorią, ψ i grupą z modułu); słup –
+   pręt pionowy z podstawą i głowicą wg schematu modułu, siły N, H, q, M jako obciążenia głowicy i pręta
+   (statyka modułu po przeniesieniu jest taka sama jak przed – `tests/create.test.js`).
 
 ## Wymiana danych model ↔ moduł
 
@@ -123,8 +132,8 @@ w `tools/engines.js`, opis w `D.MODS` i funkcję mapowania `MAP.<moduł>_<rodzaj
 ## Ograniczenia
 
 - Analiza płaska; zginanie z płaszczyzny i skręcanie – ustawienia w modułach.
-- Pozycje obciążeń dodane w modułach słupów (siły w głowicy są wynikiem analizy ramy) oraz obciążenia etapu
-  montażu w BelkaStal pozostają w module i nie są przenoszone do modelu.
+- Pozycje obciążeń dodane w modułach słupów powiązanych z modelem (siły w głowicy są wynikiem analizy ramy) oraz
+  obciążenia montażowe Qc w BelkaStal pozostają w module i nie są przenoszone do modelu (model nie ma etapów budowy).
 - Belki w modułach liczone są w schemacie ramy zastępczej: dla obciążeń poziomych (wiatr) momenty od pracy ramy
   w belkach nie są przenoszone do BelkaŻB i BelkaDR (moduły nie przyjmują momentów skupionych) – program
   ostrzega o pominiętych składnikach na pasku modułu.

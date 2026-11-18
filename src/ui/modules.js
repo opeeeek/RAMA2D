@@ -7,7 +7,8 @@
 const RA = window.RA, Q = RA.Q, M = window.RMODEL, SEC = window.RSEC, D = window.RDES;
 const { $, $$, esc, fmt } = Q;
 const MOD = RA.mod = {};
-const APPS = { BelkaZB: { set: w => w.BZ.setState }, SlupZB: { set: w => w.SZ.setState }, BelkaDR: { set: w => w.BD.setState }, SlupDrewniany: { set: w => w.SD.setState }, BelkaStal: { set: w => w.BS.A.setState }, SlupStal: { set: w => w.BS.A.setState } };
+const APPS = { BelkaZB: { set: w => w.BZ.setState, get: w => w.BZ.S }, SlupZB: { set: w => w.SZ.setState, get: w => w.SZ.S }, BelkaDR: { set: w => w.BD.setState, get: w => w.BD.S }, SlupDrewniany: { set: w => w.SD.setState, get: w => w.SD.S },
+  BelkaStal: { set: w => w.BS.A.setState, get: w => w.BS.A.S() }, SlupStal: { set: w => w.BS.A.setState, get: w => w.BS.A.S() } };
 const frames = {};                     // app → { iframe, ready, elId }
 const cur = { ZB: { kind: 'beam', beam: null, col: null }, ST: { kind: 'beam', beam: null, col: null }, DR: { kind: 'beam', beam: null, col: null } };
 const appOf = (mk, kind) => D.MODS[mk][kind].app;
@@ -22,7 +23,8 @@ window.RAMA_BRIDGE = {
     return { state: JSON.parse(el.modJson) };
   },
   store(app, data) {
-    const f = frames[app]; if (!f || !f.elId) return;
+    const f = frames[app]; if (!f) return;
+    if (!f.elId) { if (f.free) { try { f.freeState = JSON.parse(data).state || null; } catch (e) { /* */ } } return; }   // moduł bez powiązania – dane do przeniesienia do modelu
     const el = elById(f.elId); if (!el || D.app(el) !== app) return;     // element przeniesiony do innego modułu (zmiana materiału)
     let o; try { o = JSON.parse(data); } catch (e) { return; }
     const st = o && o.state; if (!st) return;
@@ -95,6 +97,28 @@ MOD.push = function (el) {
   MOD.setState(app, el.st);
   MOD.refreshBar(el.mod);
 };
+// bieżące dane modułu (z ramki)
+function readState(f, app) {
+  try { const s = APPS[app].get(f.iframe.contentWindow); if (s) return JSON.parse(JSON.stringify(s)); } catch (e) { /* */ }
+  return f.freeState ? JSON.parse(JSON.stringify(f.freeState)) : null;
+}
+// nowy element zdefiniowany w module → model: z danych domyślnych modułu (od razu powiązany – dalsze zmiany w module aktualizują model)
+// albo z danych modułu otwartego bez powiązania (fromFree)
+MOD.newElement = function (mk, kind, fromFree) {
+  const app = appOf(mk, kind), f = frames[app] || (frames[app] = {});
+  const st0 = fromFree ? (f.iframe ? readState(f, app) : null) : null;
+  if (fromFree && !st0) { Q.toast('Brak danych modułu do przeniesienia.'); return; }
+  let r;
+  try { r = D.createFromModule(RA.P, mk, kind, st0 || D.newModuleState(mk, kind)); } catch (e) { console.error(e); r = { err: 'Błąd przenoszenia elementu z modułu: ' + e.message }; }
+  if (r.err) { Q.toast(r.err, 5000); return; }
+  const el = r.el;
+  el.st = r.st; el.stJson = JSON.stringify(r.st); el.stMod = mk + '_' + kind; el.res = null;
+  if (fromFree) { f.elId = el.id; f.free = false; f.freeState = null; el.modJson = JSON.stringify(st0); }   // ramka zachowuje dane modułu; odświeżenie z modelu po analizie
+  const c = cur[mk]; c.kind = kind; c[kind] = el.id;
+  Q.toast(`${el.name}: ${fromFree ? 'element z modułu przeniesiony do modelu' : 'nowy element w modelu – zdefiniuj go w module, model aktualizuje się automatycznie'} (${r.info.join(', ')}).${r.msgs.length ? ' ' + r.msgs.join(' ') : ''}`, r.msgs.length ? 8000 : 4500);
+  RA.change({ now: true });
+  setTimeout(() => MOD.show(mk), 30);
+};
 // element przeniesiony do innego modułu (zmiana materiału przekroju) – odłączenie od ramki poprzedniego modułu
 MOD.detach = function (elId) {
   Object.keys(frames).forEach(app => { const f = frames[app]; if (f.elId === elId) { f.elId = null; if (f.deferT) { clearTimeout(f.deferT); f.deferT = null; } } });
@@ -133,11 +157,13 @@ function emptyHTML(mk, kind) {
   return `<div class="modempty"><h3>${esc(nm)} – brak elementów z modelu</h3>
     <p>Element do wymiarowania to ${kind === 'beam' ? 'belka – ciąg prętów ze schematem przęseł i podpór' : 'słup – pręt pionowy między węzłami'} z przekrojem ${esc(SEC.MAT_KIND[D.MODS[mk].mat].toLowerCase())}. Schemat, przekrój i obciążenia zostaną przeniesione z modelu, a zmiany przekroju w module wrócą do modelu.</p>
     ${props.length ? `<table class="ctab"><thead><tr><th>Pręty</th><th>Długość</th><th></th></tr></thead><tbody>${props.map((q, i) => `<tr><td>${q.bars.join(', ')}</td><td class="val">${fmt(q.L, 2)} m</td><td><button class="btn sm pri" data-np="${i}">Wymiaruj</button></td></tr>`).join('')}</tbody></table>` : `<p class="hint">W modelu nie ma ${kind === 'beam' ? 'belek' : 'słupów'} z takim materiałem. Zmień przekrój prętów w modelu albo użyj modułu niezależnie.</p>`}
-    <div class="ibtn"><button class="btn sm" data-free="1">Otwórz moduł bez powiązania z modelem</button></div></div>`;
+    <div class="ibtn"><button class="btn sm pri" data-new="1">+ ${kind === 'beam' ? 'Nowa belka' : 'Nowy słup'} – zdefiniuj w module</button> <button class="btn sm" data-free="1">Otwórz moduł bez powiązania z modelem</button></div>
+    <p class="hint">${kind === 'beam' ? 'Nowa belka' : 'Nowy słup'} trafia od razu do modelu (z prawej strony układu) – schemat, przekroje, podpory i obciążenia zadane w module przenoszą się do modelu i statyki automatycznie. Moduł bez powiązania liczy niezależnie; wynik można później przenieść do modelu przyciskiem „Przenieś do modelu”.</p></div>`;
 }
 function bindEmpty(h, mk, kind) {
   const props = D.detect(RA.P).filter(q => q.mod === mk && q.kind === kind);
   $$('[data-np]', h).forEach(b => b.onclick = () => { const el = D.create(RA.P, props[+b.dataset.np]); RA.change({ now: true }); MOD.open(el.id); });
+  const nb = $('[data-new]', h); if (nb) nb.onclick = () => MOD.newElement(mk, kind, false);
   const fb = $('[data-free]', h); if (fb) fb.onclick = () => { const app = appOf(mk, kind), f = frames[app] || (frames[app] = {}); f.elId = null; f.free = true; f.iframe = null; ensureFrame(app); MOD.refreshBar(mk); };
 }
 MOD.refreshBar = function (mk) {
@@ -158,15 +184,20 @@ MOD.refreshBar = function (mk) {
       ${MOD.devText(el) ? `<span class="li devw" title="${esc(MOD.devText(el))}">⚠ schemat ≠ rama (${fmt(el.res.dev.rel * 100, 0)}%)</span>` : ''}
       ${el.kind === 'beam' ? `<label class="li">podpory od prętów dochodzących: <select id="rot-${mk}"><option value="spring" ${(el.opt || {}).rot !== 'pin' && (el.opt || {}).rot !== 'fix' ? 'selected' : ''}>sprężyste (rama zastępcza)</option><option value="pin" ${(el.opt || {}).rot === 'pin' ? 'selected' : ''}>przegubowe</option><option value="fix" ${(el.opt || {}).rot === 'fix' ? 'selected' : ''}>utwierdzone</option></select></label>` : ''}
       <button class="btn sm" id="show-${mk}">Pokaż w modelu</button>
+      <button class="btn sm" id="new-${mk}" title="Nowy element zdefiniowany w module – dodawany do modelu (z prawej strony układu) i powiązany z modułem">+ ${c.kind === 'beam' ? 'Nowa belka' : 'Nowy słup'}</button>
       ${(el.warn && el.warn.length) || el.err ? `<button class="btn sm wbtn" id="warn-${mk}">⚠ ${el.err ? 1 : el.warn.length}</button>` : ''}
       ${sups ? `<div class="lsup">Podpory: ${sups}</div>` : ''}`;
-  } else if (f && f.free) info = '<span class="li hint">Moduł bez powiązania z modelem – obliczenia niezależne (dane nie są zapisywane w projekcie).</span>';
+  } else if (f && f.free) info = `<span class="li hint">Moduł bez powiązania z modelem – obliczenia niezależne (dane nie są zapisywane w projekcie).</span>
+      <button class="btn sm pri" id="xfer-${mk}" title="Utwórz w modelu element o schemacie, przekrojach, podporach i obciążeniach z modułu; moduł zostaje z nim powiązany">➜ Przenieś do modelu</button>`;
+  else info = `<button class="btn sm" id="new-${mk}">+ ${c.kind === 'beam' ? 'Nowa belka' : 'Nowy słup'}</button>`;
   bar.innerHTML = `<div class="segsw"><button data-k="beam" class="${c.kind === 'beam' ? 'on' : ''}">Belki (${cnt('beam')})</button><button data-k="col" class="${c.kind === 'col' ? 'on' : ''}">Słupy (${cnt('col')})</button></div>
     ${els.length ? `<select id="el-${mk}">${els.map(d => `<option value="${d.id}" ${el && d.id === el.id ? 'selected' : ''}>${esc(d.name)}${d.res && d.res.eta !== null && d.res.eta !== undefined ? ` – η ${fmt(d.res.eta * 100, 0)}%` : ''}</option>`).join('')}</select>` : ''}
     ${info}`;
   $$('[data-k]', bar).forEach(b => b.onclick = () => { c.kind = b.dataset.k; MOD.show(mk); });
   const es = $('#el-' + mk); if (es) es.onchange = () => { c[c.kind] = es.value; MOD.show(mk); };
   const rs = $('#rot-' + mk); if (rs && el) rs.onchange = () => { el.opt = Object.assign({}, el.opt, { rot: rs.value }); RA.change({ now: true }); };
+  const nwb = $('#new-' + mk); if (nwb) nwb.onclick = () => MOD.newElement(mk, c.kind, false);
+  const xb = $('#xfer-' + mk); if (xb) xb.onclick = () => MOD.newElement(mk, c.kind, true);
   const sb = $('#show-' + mk); if (sb && el) sb.onclick = () => { RA.sel.bars = new Set(el.bars); RA.sel.nodes.clear(); RA.sel.loads.clear(); RA.selectTab('model'); RA.cv.render(); RA.ui.inspector(); };
   const wmodal = () => { const dv = MOD.devText(el); const m = Q.modal(`<h3>${esc(el.name)} – uwagi do przeniesienia danych</h3>${el.err ? `<div class="msg err">${esc(el.err)}</div>` : ''}${dv ? `<div class="msg wrn">${esc(dv)}</div>` : ''}<ul>${(el.warn || []).map(w => `<li>${esc(w)}</li>`).join('')}</ul><div class="dbtn"><button class="btn pri" data-a="0">Zamknij</button></div>`); m.onclick = e => { if (e.target.closest('[data-a]')) Q.closeModal(); }; };
   const wb = $('#warn-' + mk); if (wb && el) wb.onclick = wmodal;

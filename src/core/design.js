@@ -439,7 +439,7 @@ function colLateral(P, R, O, lc) {
 /* ================================================================ STAL – BelkaStal */
 MAP.ST_beam = function (P, R, el, prev) {
   const B = ENG().BST, sch = D.beamSchema(P, R, el); if (sch.err) return { err: sch.err };
-  const S = prev ? B.J.normalize(clone(prev)) : (() => { const d = B.J.defaultState(); d.obciazenia = []; d.etapy = [{ id: 'E1', nazwa: 'Eksploatacja', typ: 'eksploatacja', opis: '' }]; d.stezenia = []; d.stezenieCiagle = Object.assign(d.stezenieCiagle, { odEtapu: 0, odEtapuD: 0 }); d.ciezarWlasny.etap = 0; return B.J.normalize(d); })();
+  const S = prev ? B.J.normalize(clone(prev)) : D.newModuleState('ST', 'beam');
   const warn = [], s = sch.sec0;
   if (s.mat !== 'S') return { err: 'Przekrój elementu nie jest stalowy.' };
   const okTyp = ['walc', 'ceow', 'kat', 'rura', 'spaw'];
@@ -482,7 +482,7 @@ MAP.ST_beam = function (P, R, el, prev) {
 /* ---------------------------------------------------------------- STAL – SłupStal */
 MAP.ST_col = function (P, R, el, prev) {
   const B = ENG().SST, sch = D.colSchema(P, R, el); if (sch.err) return { err: sch.err };
-  const S = prev ? B.J.normalize(clone(prev)) : (() => { const d = B.J.defaultState(); d.obciazenia = []; d.stezenia = []; return B.J.normalize(d); })();
+  const S = prev ? B.J.normalize(clone(prev)) : D.newModuleState('ST', 'col');
   const warn = [], s = sch.sec;
   if (s.mat !== 'S') return { err: 'Przekrój elementu nie jest stalowy.' };
   const okTyp = ['walc', 'spaw', 'rura', 'chs', 'dwuc'];
@@ -547,7 +547,7 @@ function colBC(P, sch) {
 /* ================================================================ DREWNO – BelkaDR */
 MAP.DR_beam = function (P, R, el, prev) {
   const E = ENG().BDR, sch = D.beamSchema(P, R, el); if (sch.err) return { err: sch.err };
-  const S = prev ? E.normalize(clone(prev)) : (() => { const d = E.defaultState(); d.loads.perm = []; d.loads.var = []; d.loads.acc = []; return E.normalize(d); })();
+  const S = prev ? E.normalize(clone(prev)) : D.newModuleState('DR', 'beam');
   const warn = [], s = sch.sec0;
   if (s.mat !== 'D') return { err: 'Przekrój elementu nie jest drewniany.' };
   if (s.shape === 'round') warn.push('Przekrój okrągły – BelkaDR liczy przekroje prostokątne; przyjęto kwadrat o boku ⌀.');
@@ -597,7 +597,7 @@ MAP.DR_beam = function (P, R, el, prev) {
 /* ---------------------------------------------------------------- DREWNO – SłupDrewniany */
 MAP.DR_col = function (P, R, el, prev) {
   const E = ENG().SDR, sch = D.colSchema(P, R, el); if (sch.err) return { err: sch.err };
-  const S = prev ? E.normalize(clone(prev)) : (() => { const d = E.defaultState(); d.loads.items = []; return E.normalize(d); })();
+  const S = prev ? E.normalize(clone(prev)) : D.newModuleState('DR', 'col');
   const warn = [], s = sch.sec;
   if (s.mat !== 'D') return { err: 'Przekrój elementu nie jest drewniany.' };
   S.meta.name = el.name; S.geom.L = r3(sch.L);
@@ -646,10 +646,17 @@ D.engKey = el => D.MODS[el.mod][el.kind].eng;
 D.sectionFromModule = function (P, el, st) {
   const cur = M().sec(P, M().bar(P, el.bars[0]).sec); if (!cur) return null;
   const s = clone(cur); delete s.id; delete s.name;
+  stateToSection(s, el, st);
+  if (secKey(s) === secKey(cur)) return null;
+  return s;
+};
+// przekrój nowego elementu z danych modułu
+D.sectionFromState = function (el, st) { const s = SEC().make(D.MODS[el.mod].mat); delete s.id; stateToSection(s, el, st); return s; };
+function stateToSection(s, el, st) {
   if (el.mod === 'ZB' && el.kind === 'beam') {
     s.mat = 'C'; s.cls = st.mat.concrete;
     if (st.geom.type === 'T') Object.assign(s, { shape: 'T', b: +st.geom.b, h: +st.geom.h, beff: +st.geom.beff, hf: +st.geom.hf });
-    else if (cur.shape === 'circ' || cur.shape === 'ring') { /* bez zmian kształtu */ }
+    else if (s.shape === 'circ' || s.shape === 'ring') { /* bez zmian kształtu */ }
     else Object.assign(s, { shape: 'rect', b: +st.geom.b, h: +st.geom.h });
   } else if (el.mod === 'ZB') {
     s.mat = 'C'; s.cls = st.mat.concrete; const g = st.geom;
@@ -665,9 +672,8 @@ D.sectionFromModule = function (P, el, st) {
     else if (st.geom.type === 'round') Object.assign(s, { shape: 'round', D: +st.geom.d });
     else if (st.geom.type === 'rect') Object.assign(s, { shape: 'rect', b: +st.geom.b, h: +st.geom.h, n: 1 });
   }
-  if (secKey(s) === secKey(cur)) return null;
   return s;
-};
+}
 // zastosowanie przekroju z modułu w modelu: gdy przekrój jest współdzielony z prętami spoza elementu – nowy przekrój
 D.applySection = function (P, el, s) {
   const bars = el.bars.map(id => M().bar(P, id)).filter(Boolean);
@@ -962,13 +968,14 @@ function beamLoads(el, st) {
         if (+it.mt) e.bad.push('skręcanie'); if (+it.N) e.bad.push('siła podłużna');
       }); });
     } else if (el.mod === 'ST') {
-      const g = st.geom || {}, L = (+g.wspL || 0) + (g.przesla || []).reduce((a, v) => a + (+v || 0), 0) + (+g.wspP || 0), nE = (st.etapy || []).length || 1;
+      const g = st.geom || {}, L = (+g.wspL || 0) + (g.przesla || []).reduce((a, v) => a + (+v || 0), 0) + (+g.wspP || 0);
       const KND = { G: 'perm', Q: 'imp', S: 'snow', W: 'wind', T: 'other', A: 'acc' };
       let oi = 0;
       (st.obciazenia || []).forEach((o, i) => {
         const key = o.rama ? 'R:' + o.id : `O:obc:${oi++}`;
-        const e = add(key, { rama: !!o.rama, rcase: o.rama ? o.id : null, list: 'obc', idx: [i], kind: KND[o.rodzaj] || null, cat: o.kat ? String(o.kat).replace(/^Q-/, '') : 'B', grp: o.wyklucz || '', name: o.nazwa, off: o.aktywne === false, skip: (+o.etap || 0) < nE - 1 });
-        if (!e.kind) e.bad.push(`rodzaj oddziaływania ${o.rodzaj}`);
+        // obciążenia montażowe (Qc) – tylko w module (model nie ma etapów budowy); obciążenia przyłożone w etapie montażu działają dalej
+        const e = add(key, { rama: !!o.rama, rcase: o.rama ? o.id : null, list: 'obc', idx: [i], kind: KND[o.rodzaj] || null, cat: o.kat ? String(o.kat).replace(/^Q-/, '') : 'B', grp: o.wyklucz || '', name: o.nazwa, off: o.aktywne === false, skip: o.rodzaj === 'Qc' });
+        if (!e.kind && !e.skip) e.bad.push(`rodzaj oddziaływania ${o.rodzaj}`);
         (o.sklad || []).forEach(k => {
           if (k.kier === 'y') { e.bad.push('obciążenie poziome (Y)'); return; }
           if (k.typ === 'q') { const x0 = k.x0 === '' || k.x0 == null ? 0 : +k.x0, x1 = k.x1 === '' || k.x1 == null ? L : +k.x1, q0 = +k.q0 || 0, q1 = k.q1 === '' || k.q1 == null ? q0 : +k.q1; if (Math.abs(x1 - x0) > 1e-4 && (q0 || q1)) e.q.push(x0 <= x1 ? { x1: x0, x2: x1, q1: q0, q2: q1 } : { x1, x2: x0, q1, q2: q0 }); }
@@ -1021,7 +1028,7 @@ function caseFor(P, el, e) {
   P.cases.push(c); return c;
 }
 function beamLoadsFromModule(P, el, base, st, info, msgs) {
-  const Lo = beamLoads(el, base), Ln = beamLoads(el, st); if (!Lo || !Ln) return { ch: false, rm: [] };
+  const Lo = base ? beamLoads(el, base) : {}, Ln = beamLoads(el, st); if (!Lo || !Ln) return { ch: false, rm: [] };
   const xf = el.xfer || (el.xfer = {});
   const pend = new Set(); Object.values(xf).forEach(x => x.ids.forEach(id => pend.add(id)));
   const bars = new Set(el.bars), np = el.nodePts || {};
@@ -1047,7 +1054,8 @@ function beamLoadsFromModule(P, el, base, st, info, msgs) {
       x.ids = n.off ? [] : writeBeamLoads(P, el, x.c, n, null); ch = true; info.push(`obciążenia ${x.c}`);
       return;
     }
-    if (n.off || n.skip || (!n.q.length && !n.P.length)) return;      // wyłączona, etap montażu albo w trakcie wprowadzania
+    if (n.skip) { if (!o) msgs.push('Obciążenia montażowe (Qc) pozostają w module – model nie ma etapów budowy.'); return; }
+    if (n.off || (!n.q.length && !n.P.length)) return;                   // wyłączona albo w trakcie wprowadzania
     if (o && !o.rama && loadSig(o) === loadSig(n)) return;              // pozycja modułu sprzed powiązania – bez zmian
     if (!n.kind) { msgs.push(`Obciążenie „${n.name || ''}”: ${n.bad.join(', ')} – nie przeniesiono do modelu.`); return; }
     if (n.bad.length) msgs.push(`Obciążenie „${n.name || ''}”: ${n.bad.join(', ')} – model przyjmuje tylko obciążenia w płaszczyźnie układu; pominięto te składowe.`);
@@ -1137,6 +1145,157 @@ D.fromModule = function (P, R, el, base, st) {
   return { changed, info: Array.from(new Set(info)), msgs: Array.from(new Set(msgs)), st };
 };
 D._beamDesc = beamDesc; D._beamLoads = beamLoads; D._colDesc = colDesc;
+
+/* ================================================================ element zdefiniowany w module → nowy element modelu
+   Belka: węzły w podporach, węzłach i na końcach, pręty z przekrojem modułu (także różne przekroje przęseł), podpory
+   (przesuw, podatność, utwierdzenie), przeguby, obciążenia modułu → przypadki modelu. Słup: pręt pionowy, podstawa
+   i głowica wg schematu modułu, siły (N, H, q, M) → obciążenia modelu. Element jest od razu powiązany z modułem. */
+D.newModuleState = function (mod, kind) {
+  const k = mod + '_' + kind;
+  if (k === 'ZB_beam') { const E = ENG().BZB, d = E.defaultState(); d.loads.perm = []; d.loads.var = []; d.loads.acc = []; return E.normalize(d); }
+  if (k === 'ZB_col') { const E = ENG().SZB, d = E.defaultState(); d.loads.items = []; d.loads.mode = 'cases'; return E.normalize(d); }
+  if (k === 'DR_beam') { const E = ENG().BDR, d = E.defaultState(); d.loads.perm = []; d.loads.var = []; d.loads.acc = []; return E.normalize(d); }
+  if (k === 'DR_col') { const E = ENG().SDR, d = E.defaultState(); d.loads.items = []; return E.normalize(d); }
+  if (k === 'ST_beam') { const B = ENG().BST, d = B.J.defaultState(); d.obciazenia = []; d.etapy = [{ id: 'E1', nazwa: 'Eksploatacja', typ: 'eksploatacja', opis: '' }]; d.stezenia = []; d.stezenieCiagle = Object.assign(d.stezenieCiagle, { odEtapu: 0, odEtapuD: 0 }); d.ciezarWlasny.etap = 0; return B.J.normalize(d); }
+  if (k === 'ST_col') { const B = ENG().SST, d = B.J.defaultState(); d.obciazenia = []; d.stezenia = []; return B.J.normalize(d); }
+  return null;
+};
+// pozycje oznaczone „z ramy” (np. z poprzedniego powiązania) – w nowym elemencie traktowane jak pozycje modułu
+function stripRama(el, st) {
+  const un = it => { if (it && it.rama) { delete it.rama; delete it.rcase; delete it.link; } };
+  if (el.mod === 'ST') (st.obciazenia || []).forEach(un);
+  else if (el.kind === 'beam') ['perm', 'var', 'acc'].forEach(k => (st.loads[k] || []).forEach(un));
+  else (st.loads.items || []).forEach(un);
+}
+function findSection(P, s, name) {
+  const ex = P.sections.find(q => secKey(q) === secKey(Object.assign({}, s, { kEI: q.kEI })));
+  if (ex) return ex;
+  const ns = Object.assign(clone(s), { id: 's' + (P.seq.sec++), name, kEI: s.kEI || 1 }); P.sections.push(ns); return ns;
+}
+// pozycje obciążeń modułu słupa → obciążenia modelu (słup dół → góra, +X w prawo): N – ściskanie w głowicy, H – siła w głowicy,
+// q – obciążenie poprzeczne, Mt / Mb – momenty węzłowe (zgodnie z ruchem wskazówek zegara +), pts – siły pośrednie (t od podstawy)
+function colItems(el, st, L, cd, msgs) {
+  const out = [], sg = SZB_SGN;
+  const base = it => ({ kind: it.kind, cat: it.cat, alt: it.alt, grp: it.grp || '', psi: [it.p0, it.p1, it.p2], dur: it.dur, name: it.name, N: 0, H: 0, q: 0, qa: 0, qb: 1, Mt: 0, Mb: 0, pts: [], bad: [] });
+  if (el.mod === 'ZB') {
+    const S = ENG().SZB.normalize(clone(st));
+    (S.loads.items || []).forEach((it, i) => {
+      if (it.off) return;
+      const e = Object.assign(base(it), { idx: i }), Myt = +it.Myt || 0, Myb = +it.Myb || 0;
+      e.N = +it.N || 0; e.q = -(+it.qh || 0) / sg;
+      // momenty końcowe SłupŻB (wartości na końcach) → obciążenia: wspornik – moment i siła w głowicy, przegub–przegub – momenty węzłowe
+      if (cd.top === 'free') { e.Mt = -Myt / sg; e.H = -(+it.Hh || 0) / sg + (Myt - Myb) / (sg * L); }
+      else if (cd.top === 'pin') { e.Mt = -Myt / sg; if (cd.base === 'pin') e.Mb = Myb / sg; else if (Math.abs(Myb) > 1e-6) msgs.push(`${it.name || 'obciążenie'}: moment u podstawy M_yb słupa utwierdzonego z głowicą podpartą wynika w modelu ze schematu (statycznie niewyznaczalny).`); }
+      else if (Math.abs(Myt) + Math.abs(Myb) > 1e-6) msgs.push(`${it.name || 'obciążenie'}: momenty końcowe słupa z utwierdzoną głowicą wynikają w modelu ze schematu (statycznie niewyznaczalny) – pominięto.`);
+      if (+it.Mzt || +it.Mzb || +it.qb || +it.Hb) e.bad.push('obciążenia z płaszczyzny ramy (z)');
+      if (+it.eh || +it.eb) e.bad.push('mimośrody siły podłużnej');
+      out.push(e);
+    });
+  } else if (el.mod === 'ST') {
+    const tAt = x => (x === '' || x == null ? 1 : Math.max(0, Math.min(1, +x / L)));
+    (st.obciazenia || []).forEach((o, i) => {
+      if (o.aktywne === false) return;
+      const e = Object.assign(base({ kind: { G: 'perm', Q: 'imp', S: 'snow', W: 'wind', T: 'other', A: 'acc' }[o.rodzaj] || null, cat: o.kat ? String(o.kat).replace(/^Q-/, '') : 'B', grp: o.wyklucz, name: o.nazwa }), { idx: i });
+      if (!e.kind) e.bad.push(`rodzaj oddziaływania ${o.rodzaj}`);
+      (o.sklad || []).forEach(k => {
+        const t = tAt(k.x);
+        if (k.typ === 'N') { if (t >= 1 - 1e-9) e.N += +k.F || 0; else e.pts.push({ t, N: +k.F || 0 }); if (+k.ey || +k.ez) e.bad.push('mimośrody siły podłużnej'); }
+        else if (k.typ === 'H') { if (k.kier === 'y') { e.bad.push('siła z płaszczyzny ramy'); return; } const H = (+k.F || 0) / SST_H; if (t >= 1 - 1e-9) e.H += H; else e.pts.push({ t, H }); }
+        else if (k.typ === 'M') { if (k.os === 'z') { e.bad.push('moment z płaszczyzny ramy'); return; } const Mv = -(+k.M || 0) / SST_M; if (t >= 1 - 1e-9) e.Mt += Mv; else if (t <= 1e-9) e.Mb += Mv; else e.pts.push({ t, M: Mv }); }
+        else if (k.typ === 'q') { if (k.kier === 'y') { e.bad.push('obciążenie z płaszczyzny ramy'); return; } const a = k.x0 === '' || k.x0 == null ? 0 : tAt(k.x0), b = k.x1 === '' || k.x1 == null ? 1 : tAt(k.x1); e.q = (+k.q0 || 0) / SST_H; e.q2 = k.q1 === '' || k.q1 == null ? e.q : (+k.q1) / SST_H; e.qa = a; e.qb = b; }
+        else if (k.typ === 'Nq') e.bad.push('obciążenie podłużne rozłożone');
+      });
+      out.push(e);
+    });
+  } else if (el.mod === 'DR') {
+    const S = ENG().SDR.normalize(clone(st));
+    (S.loads.items || []).forEach((it, i) => {
+      if (it.off) return;
+      const e = Object.assign(base(it), { idx: i });
+      e.N = +it.N || 0; e.H = (+it.Hz || 0) / SDR_H; e.Mt = -(+it.My || 0) / SDR_M; e.q = (+it.qz || 0) / SDR_H;
+      if (it.qa !== '' || it.qb !== '') { e.qa = it.qa === '' ? 0 : Math.max(0, Math.min(1, it.qa / L)); e.qb = it.qb === '' ? 1 : Math.max(0, Math.min(1, it.qb / L)); }
+      (it.pts || []).forEach(p => { const t = Math.max(0, Math.min(1, p.x / L)); if (p.N) e.pts.push({ t, N: p.N }); if (p.Hz) e.pts.push({ t, H: p.Hz / SDR_H }); if (p.Hy) e.bad.push('siła z płaszczyzny ramy'); });
+      if (+it.Hy || +it.Mz || +it.qy) e.bad.push('obciążenia z płaszczyzny ramy (y)');
+      if (+it.ey || +it.ez) e.bad.push('mimośrody siły podłużnej');
+      out.push(e);
+    });
+  }
+  out.forEach(e => { e.bad = Array.from(new Set(e.bad)); e.has = Math.abs(e.N) + Math.abs(e.H) + Math.abs(e.q) + Math.abs(e.q2 || 0) + Math.abs(e.Mt) + Math.abs(e.Mb) + e.pts.length > 1e-9; });
+  return out;
+}
+
+D.createFromModule = function (P, mod, kind, st0) {
+  if (!D.MODS[mod] || !['beam', 'col'].includes(kind)) return { err: 'Nieznany moduł.' };
+  const el0 = { mod, kind, name: '' }, st = clone(st0), info = [], msgs = [];
+  stripRama(el0, st);
+  const empty = !P.nodes.length;
+  // położenie: nowy model – początek układu, w przeciwnym razie z prawej strony istniejącego układu (na poziomie podstawy)
+  const at = (() => { if (empty) return { x: 0, z: 0 }; const b = M().bounds(P); return { x: Math.ceil((b.x1 + 3) * 2) / 2, z: r3(b.z0) }; })();
+  let nm = D.nameFromModule(el0, st); if (!nm || P.design.some(d => d.name === nm)) nm = D.nextName(P, kind);
+  const sec = findSection(P, D.sectionFromState(el0, st), nm);
+  const mk = (x, z) => M().addNode(P, x, z, 1e-6);
+  let bars = [], el;
+  if (kind === 'beam') {
+    const d = beamDesc(el0, st); if (!d || !d.sups.length || !(d.L > 0.05)) return { err: 'Schemat belki w module jest niepełny (brak podpór lub długości).' };
+    const xs = [];
+    [0, d.L].concat(d.sups.map(q => q.x), d.nodes.map(q => q.x)).forEach(x => { if (x >= -1e-9 && x <= d.L + 1e-9 && !xs.some(v => Math.abs(v - x) < 1e-4)) xs.push(x); });
+    xs.sort((a, b) => a - b);
+    const nid = xs.map(x => mk(at.x + x, at.z).id);
+    for (let k = 0; k < xs.length - 1; k++) bars.push(M().addBar(P, nid[k], nid[k + 1], sec.id).id);
+    const idx = x => xs.findIndex(v => Math.abs(v - x) < 1e-4);
+    const hinge = x => { const k = idx(x); if (k > 0 && k < xs.length - 1) M().bar(P, bars[k - 1]).rel[1] = 0; };
+    d.nodes.forEach(q => { if (q.hinge) hinge(q.x); });
+    let anyX = false;
+    d.sups.forEach(p => {
+      const sp = { node: nid[idx(p.x)], ux: p.fx ? 1 : 0, uz: p.fy && !(p.kv > 0) ? 1 : 0, ry: p.r && !(p.kr > 0) ? 1 : 0, kx: 0, kz: p.fy && p.kv > 0 ? p.kv : 0, kr: p.r && p.kr > 0 ? p.kr : 0, ang: 0 };
+      if (sp.ux) anyX = true; P.supports = P.supports.filter(q => q.node !== sp.node); P.supports.push(sp); if (p.hinge) hinge(p.x);
+    });
+    if (!anyX) { P.supports.find(q => q.node === nid[idx(d.sups[0].x)]).ux = 1; msgs.push('Żadna podpora w module nie blokuje przesuwu wzdłuż belki – w modelu podpora A jest nieprzesuwna.'); }
+    el = D.create(P, { kind, mod, bars, name: nm }); el.flip = false; el.nodePts = null;
+    info.push(`belka ${d.sups.length > 1 ? (d.sups.length - 1) + ' przęsł.' : 'wspornikowa'}, L = ${String(r2(d.L)).replace('.', ',')} m`);
+    // schemat w układzie modelu (przekroje przęseł, obciążenia)
+    try { const R = M().analyze(P); if (R.ok) { const out = D.toModule(P, R, el); if (!out.err) el.sch = out.sch; } } catch (e) { /* */ }
+    if (el.sch) D.applyModuleSections(P, el, st);
+    const L = beamLoadsFromModule(P, el, null, st, info, msgs); dropItems(el, st, L.rm);
+  } else {
+    const L = el0.mod === 'ST' ? +st.geom.H : +st.geom.L; if (!(L > 0.1)) return { err: 'Wysokość słupa w module jest nieprawidłowa.' };
+    const cd = colDesc(el0, st) || { base: 'fix', kb: 0, top: 'free' };
+    const nb = mk(at.x, at.z).id, nt = mk(at.x, at.z + L).id;
+    bars = [M().addBar(P, nb, nt, sec.id).id];
+    P.supports.push({ node: nb, ux: 1, uz: 1, ry: cd.base === 'fix' ? 1 : 0, kx: 0, kz: 0, kr: cd.base === 'spr' ? cd.kb : 0, ang: 0 });
+    let restr = cd.top === 'pin' || cd.top === 'fix';
+    const rotFix = cd.top === 'fix' || cd.top === 'slide';
+    if (cd.base === 'pin' && !restr) { restr = true; msgs.push('Słup z podstawą przegubową i swobodną głowicą jest mechanizmem – w modelu głowica podparta poziomo.'); }
+    if (restr || rotFix) P.supports.push({ node: nt, ux: restr ? 1 : 0, uz: 0, ry: rotFix ? 1 : 0, kx: 0, kz: 0, kr: 0, ang: 0 });
+    el = D.create(P, { kind, mod, bars, name: nm });
+    info.push(`słup H = ${String(r2(L)).replace('.', ',')} m`);
+    // obciążenia → przypadki modelu (siły w głowicy – obciążenia węzłowe)
+    const items = colItems(el0, st, L, Object.assign({}, cd, { top: restr && cd.top === 'free' ? 'pin' : cd.top }), msgs), moved = new Set();
+    items.forEach(e => {
+      if (e.bad.length) msgs.push(`${e.name || 'obciążenie'}: ${e.bad.join(', ')} – nie przeniesiono do modelu.`);
+      if (!e.has || !e.kind) return;
+      const lc = caseFor(P, el, e), push = l => { l.id = P.seq.load++; l.case = lc.id; P.loads.push(l); };
+      if (Math.abs(e.N) + Math.abs(e.H) + Math.abs(e.Mt) > 1e-9) push({ kind: 'node', node: nt, Fx: r3(e.H), Fz: r3(e.N), M: r3(e.Mt) });
+      if (Math.abs(e.Mb) > 1e-9) push({ kind: 'node', node: nb, Fx: 0, Fz: 0, M: r3(e.Mb) });
+      if (Math.abs(e.q) + Math.abs(e.q2 || 0) > 1e-9) push({ kind: 'dist', bar: bars[0], dir: 'X', q1: r3(e.q), q2: e.q2 !== undefined && Math.abs(e.q2 - e.q) > 1e-9 ? r3(e.q2) : '', x1: r4(e.qa), x2: r4(e.qb), proj: false });
+      e.pts.forEach(p => {
+        if (p.N) push({ kind: 'point', bar: bars[0], dir: 'x', P: r3(-p.N), x: r4(p.t) });
+        if (p.H) push({ kind: 'point', bar: bars[0], dir: 'X', P: r3(p.H), x: r4(p.t) });
+        if (p.M) push({ kind: 'moment', bar: bars[0], M: r3(p.M), x: r4(p.t) });
+      });
+      moved.add(e.idx); info.push(`obciążenie → przypadek ${lc.id}`);
+    });
+    if (el0.mod === 'ST') st.obciazenia = (st.obciazenia || []).filter((o, i) => !moved.has(i));
+    else st.loads.items = (st.loads.items || []).filter((it, i) => !moved.has(i));
+  }
+  // nowy projekt: ustawienia kombinacji i ciężar własny jak w module
+  if (empty) {
+    settingsFromModule(P, el, { loads: {} }, st, info);
+    const sw = el0.mod === 'ST' ? !(st.ciezarWlasny && st.ciezarWlasny.auto === false) : !(st.loads && st.loads.sw === false);
+    P.cases.filter(c => c.cat === 'G').forEach((c, i) => { if (i === 0) c.sw = sw; });
+  }
+  return { el, st, info: Array.from(new Set(info)), msgs: Array.from(new Set(msgs)) };
+};
 
 /* ------------------------------------------------------------ kontrola wytężenia silnikiem modułu */
 D.check = function (el) {
