@@ -33,6 +33,10 @@ if (!noMods) {
 }
 UI.forEach(f => scripts.push(tag(rd(f), f)));
 html = html.replace('<!--@@SCRIPTS@@-->', () => scripts.join('\n'));
+// ikona programu: favicon (SVG) i logo w nagłówku (wersja do małych rozmiarów; identyfikatory gradientów unikalne)
+const icoSmall = rd('src/icon/icon-small.svg').replace(/<!--.*?-->\s*/gs, '').trim();
+html = html.replace('/*@@ICON@@*/', () => 'data:image/svg+xml;base64,' + Buffer.from(icoSmall).toString('base64'))
+  .replace('<!--@@LOGO@@-->', () => icoSmall.replace(/id="bg"/g, 'id="rama-logo-bg"').replace(/url\(#bg\)/g, 'url(#rama-logo-bg)').replace(/width="32" height="32"/, 'width="28" height="28" aria-hidden="true" class="logo"'));
 fs.mkdirSync(path.join(ROOT, 'dist'), { recursive: true });
 const out = path.join(ROOT, 'dist', 'RAMA2D.html');
 fs.writeFileSync(out, html);

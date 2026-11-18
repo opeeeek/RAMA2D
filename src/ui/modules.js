@@ -15,13 +15,18 @@ const elById = id => RA.P.design.find(d => d.id === id);
 
 /* ------------------------------------------------------------ most (wywoływany z ramek modułów) */
 window.RAMA_BRIDGE = {
-  initial(app) { const f = frames[app]; const el = f && f.elId ? elById(f.elId) : null; return el && el.st ? { state: JSON.parse(JSON.stringify(el.st)) } : null; },
+  initial(app) {
+    const f = frames[app]; const el = f && f.elId ? elById(f.elId) : null;
+    if (!el || !el.st || D.app(el) !== app) return null;
+    el.modJson = JSON.stringify(el.st); el.xfer = null;
+    return { state: JSON.parse(el.modJson) };
+  },
   store(app, data) {
     const f = frames[app]; if (!f || !f.elId) return;
-    const el = elById(f.elId); if (!el) return;
+    const el = elById(f.elId); if (!el || D.app(el) !== app) return;     // element przeniesiony do innego modułu (zmiana materiału)
     let o; try { o = JSON.parse(data); } catch (e) { return; }
     const st = o && o.state; if (!st) return;
-    const js = JSON.stringify(st); if (js === el.stJson) return;
+    const js = JSON.stringify(st); if (js === el.stJson || js === el.modJson) return;
     RA.fromModule(el, st);
     MOD.refreshBar(el.mod);
   },
@@ -61,6 +66,8 @@ MOD.setState = function (app, st) {
   if (!f.ready) { f.pending = st; return; }
   try {
     const w = f.iframe.contentWindow;
+    const el = f.elId ? elById(f.elId) : null;
+    if (el && D.app(el) === app) { el.modJson = JSON.stringify(st); el.xfer = null; }     // stan, który ma teraz moduł (podstawa porównań zmian z modułu)
     APPS[app].set(w)(JSON.parse(JSON.stringify(st)));
     // nazwa elementu w polu modułu (nie wszystkie moduły odświeżają je w setState)
     const pn = w.document.getElementById('projName'), nm = st.meta && (st.meta.name || st.meta.nazwa);
@@ -72,12 +79,26 @@ MOD.devText = function (el) {
   const d = el.res && el.res.dev; if (!d || !(d.rel > 0.15) || !d.at) return '';
   return `Schemat modułu odbiega od statyki ramy: moment od obciążeń stałych w x = ${fmt(d.at.x, 2)} m – moduł ${fmt(d.at.mod, 1)} kNm, rama ${fmt(d.at.frame, 1)} kNm (różnica ${fmt(d.rel * 100, 0)}% max |M| = ${fmt(d.fmax, 1)} kNm). Element pracuje w układzie ramowym (np. rygiel ramy dwuspadowej, belka w ramie przechyłowej) – sprawdź wymiarowanie na siłach z ramy (zakładka Wyniki) lub zmień rodzaj podpór od prętów dochodzących.`;
 };
-// przesłanie danych elementu do jego modułu (gdy jest w nim otwarty)
+// przesłanie danych elementu do jego modułu (gdy jest w nim otwarty); podczas wpisywania wartości w polu modułu – po opuszczeniu pola
+const typing = f => { try { if (document.activeElement !== f.iframe) return false; const a = f.iframe.contentWindow.document.activeElement; return !!a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|range|color|file)$/i.test(a.type))); } catch (e) { return false; } };
 MOD.push = function (el) {
   const app = D.app(el), f = frames[app];
   if (!f || f.elId !== el.id || !f.iframe) return;
+  if (f.ready && typing(f)) {
+    if (!f.deferT) {
+      const go = () => { if (typing(f)) { f.deferT = setTimeout(go, 400); return; } f.deferT = null; const e2 = f.elId ? elById(f.elId) : null; if (e2 && e2.st && D.app(e2) === app) { MOD.setState(app, e2.st); MOD.refreshBar(e2.mod); } };
+      f.deferT = setTimeout(go, 400);
+    }
+    MOD.refreshBar(el.mod); return;
+  }
+  if (f.deferT) { clearTimeout(f.deferT); f.deferT = null; }
   MOD.setState(app, el.st);
   MOD.refreshBar(el.mod);
+};
+// element przeniesiony do innego modułu (zmiana materiału przekroju) – odłączenie od ramki poprzedniego modułu
+MOD.detach = function (elId) {
+  Object.keys(frames).forEach(app => { const f = frames[app]; if (f.elId === elId) { f.elId = null; if (f.deferT) { clearTimeout(f.deferT); f.deferT = null; } } });
+  Object.keys(cur).forEach(mk => { ['beam', 'col'].forEach(k => { if (cur[mk][k] === elId) cur[mk][k] = null; }); });
 };
 MOD.reset = function () { Object.keys(frames).forEach(app => { const f = frames[app]; f.elId = null; }); Object.keys(cur).forEach(k => { cur[k].beam = null; cur[k].col = null; }); };
 MOD.init = function () {
@@ -140,7 +161,7 @@ MOD.refreshBar = function (mk) {
       ${(el.warn && el.warn.length) || el.err ? `<button class="btn sm wbtn" id="warn-${mk}">⚠ ${el.err ? 1 : el.warn.length}</button>` : ''}
       ${sups ? `<div class="lsup">Podpory: ${sups}</div>` : ''}`;
   } else if (f && f.free) info = '<span class="li hint">Moduł bez powiązania z modelem – obliczenia niezależne (dane nie są zapisywane w projekcie).</span>';
-  bar.innerHTML = `<div class="segsw"><button data-k="beam" class="${c.kind === 'beam' ? 'on' : ''}">${esc(D.MODS[mk].beam.n.split(' ')[0])}y (${cnt('beam')})</button><button data-k="col" class="${c.kind === 'col' ? 'on' : ''}">${esc(D.MODS[mk].col.n.split(' ')[0])}y (${cnt('col')})</button></div>
+  bar.innerHTML = `<div class="segsw"><button data-k="beam" class="${c.kind === 'beam' ? 'on' : ''}">Belki (${cnt('beam')})</button><button data-k="col" class="${c.kind === 'col' ? 'on' : ''}">Słupy (${cnt('col')})</button></div>
     ${els.length ? `<select id="el-${mk}">${els.map(d => `<option value="${d.id}" ${el && d.id === el.id ? 'selected' : ''}>${esc(d.name)}${d.res && d.res.eta !== null && d.res.eta !== undefined ? ` – η ${fmt(d.res.eta * 100, 0)}%` : ''}</option>`).join('')}</select>` : ''}
     ${info}`;
   $$('[data-k]', bar).forEach(b => b.onclick = () => { c.kind = b.dataset.k; MOD.show(mk); });

@@ -19,13 +19,15 @@ const baseName = p => (p || '').split(/[\\/]/).pop();
 
 /* ------------------------------------------------------------ cofanie / ponawianie */
 const UNDO = [], REDO = [];
-const snap = () => { const P = RA.P, o = Object.assign({}, P, { design: P.design.map(d => Object.assign({}, d, { st: null, stJson: undefined, res: undefined })) }); return JSON.stringify(o); };
+const PERSIST = ['id', 'mod', 'kind', 'bars', 'name', 'opt'];        // dane elementu zapisywane w historii (bez danych modułu i wyników)
+const snap = () => { const P = RA.P, o = Object.assign({}, P, { design: P.design.map(d => { const q = {}; PERSIST.forEach(k => { q[k] = d[k]; }); return q; }) }); return JSON.stringify(o); };
 let lastSnap = null;
 function pushUndo() { const s = snap(); if (s === lastSnap) return; if (lastSnap) { UNDO.push(lastSnap); if (UNDO.length > 60) UNDO.shift(); } REDO.length = 0; lastSnap = s; }
 function restore(s) {
   const keep = new Map(RA.P.design.map(d => [d.id, d]));
   const P = M.normalize(JSON.parse(s));
-  P.design.forEach(d => { const k = keep.get(d.id); if (k) { d.st = k.st; d.stJson = k.stJson; d.res = k.res; } });
+  // dane modułu i wyniki – z bieżącego elementu; moduł wynika z materiału przekroju (wybierany automatycznie w RA.syncDesign)
+  P.design.forEach(d => { const k = keep.get(d.id); if (k) { Object.keys(k).forEach(q => { if (!PERSIST.includes(q)) d[q] = k[q]; }); d.mod = k.mod; } });
   RA.P = P; lastSnap = s; RA.cleanSel(); RA.change({ noUndo: true });
 }
 RA.undo = () => { if (!UNDO.length) { Q.toast('Brak operacji do cofnięcia.'); return; } REDO.push(lastSnap); restore(UNDO.pop()); };
@@ -77,11 +79,17 @@ RA.syncDesign = function (o) {
   P.design.forEach(el => {
     el.bars = el.bars.filter(id => P.bars.some(b => b.id === id));
     if (!el.bars.length) return;
+    // moduł wybierany automatycznie wg materiału przekroju prętów elementu
+    const mats = new Set(el.bars.map(id => { const s = M.sec(P, (M.bar(P, id) || {}).sec); return s ? s.mat : null; }));
+    if (mats.size > 1 || mats.has(null)) { el.err = mats.has(null) ? 'Pręt elementu bez przekroju.' : 'Pręty elementu mają przekroje z różnych materiałów – podziel element lub ujednolić materiał.'; el.warn = []; return; }
+    const mk = D.modOfMat([...mats][0]);
+    if (mk !== el.mod) { el.mod = mk; el.st = null; el.stJson = undefined; el.modJson = undefined; el.xfer = null; el.res = null; el.colSchD = undefined; if (RA.mod) RA.mod.detach(el.id); }
     const out = D.toModule(P, R, el);
     if (out.err) { el.err = out.err; el.warn = []; return; }
-    el.err = null; el.warn = out.warn; el.sch = out.sch; el.frameG = out.frameG || null;
+    el.err = null; el.warn = out.warn; el.sch = out.sch; el.frameG = out.frameG || null; el.flip = !!out.flip; el.nodePts = out.nodePts || null;
+    if (out.colSchD !== undefined) el.colSchD = out.colSchD;
     const js = JSON.stringify(out.st);
-    if (js !== el.stJson) { el.st = out.st; el.stJson = js; el.res = null; if (RA.mod) RA.mod.push(el); }
+    if (js !== el.stJson) { el.st = out.st; el.stJson = js; el.stMod = el.mod + '_' + el.kind; el.res = null; if (RA.mod) RA.mod.push(el); }
   });
   P.design = P.design.filter(el => el.bars.length);
   RA.queueChecks();
@@ -98,23 +106,23 @@ RA.queueChecks = function () {
   };
   ckT = setTimeout(step, 60);
 };
-// dane z modułu (zmiana w module): przekrój, materiał, nazwa, geometria
+// dane z modułu (zmiana w module) → model: przekrój, materiał, nazwa, schemat, podpory, przeguby, obciążenia, ustawienia
+// (różnice względem stanu, który moduł miał poprzednio – el.modJson)
 RA.fromModule = function (el, st) {
   const P = RA.P;
-  el.st = st; el.stJson = JSON.stringify(st); el.res = null;
-  let changed = false;
-  const nm = D.nameFromModule(el, st); if (nm && nm !== el.name) { el.name = nm; changed = true; }
-  const secTxt = D.applyModuleSections(P, el, st);
-  if (secTxt) { changed = true; Q.toast(`Przekrój elementu ${el.name} zmieniony w module → model i statyka zaktualizowane: ${secTxt}`, 4000); }
-  const geo = D.geometryFromModule ? D.geometryFromModule(P, RA.R, el, st) : null;
-  if (geo) { changed = true; Q.toast(`Geometria elementu ${el.name} zmieniona w module → model zaktualizowany.`); }
-  if (changed) { RA.change({ now: true }); return; }
+  let base = null; try { base = el.modJson ? JSON.parse(el.modJson) : null; } catch (e) { base = null; }
+  el.modJson = JSON.stringify(st);
+  let r;
+  try { r = D.fromModule(P, RA.R, el, base, JSON.parse(el.modJson)); } catch (e) { console.error(e); r = { changed: false, info: [], msgs: ['Błąd przenoszenia danych z modułu: ' + e.message], st }; }
+  el.st = r.st; el.stJson = JSON.stringify(r.st); el.stMod = el.mod + '_' + el.kind; el.res = null;
+  if (r.msgs.length) Q.toast(r.msgs.join(' '), 6500);
+  if (r.changed) {
+    if (!r.msgs.length) Q.toast(`${el.name}: zmiany z modułu przeniesione do modelu – ${r.info.join(', ')}.`, 3200);
+    RA.change({ now: true }); return;
+  }
   RA.file.dirty = true; RA.updateTitle(); RA.autosave();
-  // dane sterowane z modelu (schemat, obciążenia) zmienione w module – przywrócenie wartości z modelu
-  const R = RA.R; if (!R || !R.ok) { RA.queueChecks(); return; }
-  const out = D.toModule(P, R, el);
-  if (!out.err) { const js = JSON.stringify(out.st); if (js !== el.stJson) { el.st = out.st; el.stJson = js; if (RA.mod) RA.mod.push(el); Q.toast('Ta wartość jest sterowana z modelu (schemat, podpory, obciążenia) – zmień ją w zakładce Model. Przekrój, materiał i rozpiętości możesz zmieniać w module.', 5200); } }
-  RA.queueChecks();
+  // zmiany nieprzeniesione do modelu – moduł otrzymuje z powrotem dane wynikające z modelu
+  if (r.msgs.length) RA.syncDesign(); else RA.queueChecks();
 };
 
 /* ------------------------------------------------------------ status */

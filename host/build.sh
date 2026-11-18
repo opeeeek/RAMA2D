@@ -9,6 +9,4 @@ cp dist/RAMA2D.html host/RAMA2D.html            # osadzane w programie (go:embed
 cd host
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o ../RAMA2D.exe .
 echo "✓ RAMA2D.exe"
-# Ikona okna (opcjonalnie): zasoby Windows z host/icon.png, np.
-#   go run github.com/tc-hib/go-winres@v0.3.3 simply --icon icon.png --manifest gui --arch amd64
-# następnie w host/icon.go ustaw: const iconID = 1  i zbuduj ponownie.
+# Ikona programu: zasoby host/rsrc_windows_amd64.syso (w repozytorium) – po zmianie src/icon/*.svg: node tools/icon.js

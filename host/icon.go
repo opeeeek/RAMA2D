@@ -1,5 +1,6 @@
 package main
 
-// iconID – identyfikator zasobu ikony okna. Bez pliku zasobów (rsrc_windows_amd64.syso) program używa ikony domyślnej.
-// Aby osadzić ikonę host/icon.png: utwórz zasoby narzędziem go-winres (opis w host/build.sh) i ustaw iconID = 1.
-const iconID = 0
+// iconID – identyfikator zasobu ikony (RT_GROUP_ICON) w RAMA2D.exe: ikona okna, paska zadań i pliku w Eksploratorze.
+// Zasoby: host/rsrc_windows_amd64.syso (dołączany automatycznie przez kompilator Go), tworzone z src/icon/*.svg
+// skryptem tools/icon.js (node tools/icon.js – tylko po zmianie ikony).
+const iconID = 1

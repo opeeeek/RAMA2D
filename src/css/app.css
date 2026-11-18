@@ -117,6 +117,8 @@ table.ltab td:last-child { white-space: nowrap; text-align: right; }
 .gentypes .gt { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 128px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; color: var(--ink2); font-size: 12px; text-align: center; }
 .gentypes .gt:hover { background: var(--hover); }
 .gentypes .gt.on { border-color: var(--acc); background: var(--acc2); color: var(--acc3); }
+.genmat { display: flex; align-items: center; gap: 10px; margin: -2px 0 12px; font-size: 12.5px; color: var(--ink2); flex-wrap: wrap; }
+.genmat .hint { margin: 0; }
 .gencols { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; align-items: start; }
 .genprev { border: 1px solid var(--line); border-radius: 6px; background: var(--cvbg); display: flex; justify-content: center; position: sticky; top: 0; }
 .genprev .gdim { font-size: 11px; fill: var(--ink3); }

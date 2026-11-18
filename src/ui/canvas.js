@@ -11,6 +11,7 @@ const SNAP_PX = 10, HIT_BAR = 7;
 const X = x => (x - V.cx) * V.k + W / 2, Y = z => -(z - V.cz) * V.k + H / 2;
 const wx = sx => (sx - W / 2) / V.k + V.cx, wz = sy => -(sy - H / 2) / V.k + V.cz;
 const f2 = v => (Math.round(v * 100) / 100).toString().replace('.', ',');
+CV.scr = (x, z) => ({ x: X(x), y: Y(z) });         // współrzędne ekranowe punktu modelu (w układzie rysunku)
 
 CV.TOOLS = [
   ['select', 'Zaznacz / przesuń (V)', 'select'], ['bar', 'Rysuj pręty (B) – klik, klik…; Esc kończy', 'bar'], ['node', 'Węzeł na pręcie – podział pręta (N)', 'split'],
@@ -220,8 +221,23 @@ CV.context = function (p, e) {
   }
   if (hb) {
     const b = hb.bar, el = D.elementOf(P, b.id), mat = (M.sec(P, b.sec) || {}).mat;
+    // prawy klik: działa na zaznaczeniu, gdy pręt do niego należy; w przeciwnym razie zaznacza ten pręt
+    if (RA.sel.bars.has(b.id) && RA.sel.bars.size > 1) {
+      const ids = [...RA.sel.bars];
+      Q.menu(e.clientX, e.clientY, [
+        { label: `<b>Zaznaczone pręty: ${ids.length}</b>`, dis: true },
+        { label: 'Przekrój zaznaczonych ▸', fn: () => RA.ui.sectionMenu(ids, e.clientX, e.clientY) },
+        { label: 'Obciążenie rozłożone na zaznaczonych…', fn: () => RA.ui.loadDialog({ kind: 'dist', bars: ids }) },
+        { label: 'Typ: ramowy (zginany)', fn: () => { ids.forEach(id => { M.bar(P, id).type = 'frame'; }); RA.change(); } },
+        { label: 'Typ: kratowy (przeguby)', fn: () => { ids.forEach(id => { const q = M.bar(P, id); q.type = 'truss'; q.rel = [null, null]; }); RA.change(); } },
+        { sep: true }, { label: 'Wymiaruj zaznaczone w modułach', fn: () => RA.ui.designBars(ids) },
+        { sep: true }, { label: 'Usuń zaznaczone', fn: () => RA.ui.deleteSel() }]);
+      return;
+    }
+    RA.sel.nodes.clear(); RA.sel.loads.clear(); RA.sel.bars = new Set([b.id]); CV.render(); RA.ui.inspector();
     const items = [
       { label: `<b>Pręt ${b.id}</b> – ${esc(SEC.fullLabel(M.sec(P, b.sec)))}`, dis: true },
+      { label: `Przekrój: ${esc(SEC.label(M.sec(P, b.sec)))} ▸`, fn: () => RA.ui.sectionMenu([b.id], e.clientX, e.clientY) },
       { label: 'Właściwości pręta…', fn: () => RA.ui.barDialog(b.id) },
       { label: 'Obciążenie rozłożone…', fn: () => RA.ui.loadDialog({ kind: 'dist', bar: b.id }) },
       { label: 'Siła skupiona…', fn: () => RA.ui.loadDialog({ kind: 'point', bar: b.id, t: hb.t }) },
@@ -232,7 +248,7 @@ CV.context = function (p, e) {
       { label: `Przegub na początku: ${b.rel[0] === null ? 'dodaj' : 'usuń'}`, fn: () => { b.rel[0] = b.rel[0] === null ? 0 : null; RA.change(); }, dis: b.type === 'truss' },
       { label: `Przegub na końcu: ${b.rel[1] === null ? 'dodaj' : 'usuń'}`, fn: () => { b.rel[1] = b.rel[1] === null ? 0 : null; RA.change(); }, dis: b.type === 'truss' },
       { sep: true },
-      el ? { label: `Otwórz element <b>${esc(el.name)}</b> w module ${D.MODS[el.mod].n}`, fn: () => RA.mod.open(el.id) } : { label: `Wymiaruj w module ${mat ? D.MODS[D.modOfMat(mat)].n : ''}…`, fn: () => RA.ui.designFromBar(b.id), dis: !mat },
+      el ? { label: `Otwórz element <b>${esc(el.name)}</b> w module ${D.MODS[mat ? D.modOfMat(mat) : el.mod].n}`, fn: () => RA.ui.designFromBar(b.id) } : { label: `Wymiaruj w module ${mat ? D.MODS[D.modOfMat(mat)].n : ''}…`, fn: () => RA.ui.designFromBar(b.id), dis: !mat },
       { sep: true }, { label: 'Usuń pręt', fn: () => { M.deleteBars(P, [b.id]); RA.change(); } }];
     Q.menu(e.clientX, e.clientY, items); return;
   }

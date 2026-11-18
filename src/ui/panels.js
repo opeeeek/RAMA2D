@@ -399,33 +399,58 @@ UI.secEdit = function (s0, isNew, back) {
 };
 
 /* ------------------------------------------------------------ generator */
+// domyślne przekroje grup prętów w generatorze (wg materiału układu)
+const GEN_DEF = {
+  C: { col: { shape: 'rect', b: 400, h: 400 }, beam: { shape: 'rect', b: 300, h: 600 }, top: { shape: 'rect', b: 250, h: 300 }, bot: { shape: 'rect', b: 250, h: 300 }, diag: { shape: 'rect', b: 250, h: 250 }, vert: { shape: 'rect', b: 250, h: 250 }, arch: { shape: 'rect', b: 400, h: 500 }, tie: { shape: 'rect', b: 250, h: 250 } },
+  S: { col: { prof: { typ: 'walc', seria: 'HEB', nr: 240 } }, beam: { prof: { typ: 'walc', seria: 'IPE', nr: 400 } }, top: { prof: { typ: 'rura', seria: 'SHS', nr: '120x6' } }, bot: { prof: { typ: 'rura', seria: 'SHS', nr: '100x5' } }, diag: { prof: { typ: 'rura', seria: 'SHS', nr: '70x4' } }, vert: { prof: { typ: 'rura', seria: 'SHS', nr: '70x4' } }, arch: { prof: { typ: 'walc', seria: 'HEB', nr: 300 } }, tie: { prof: { typ: 'rura', seria: 'SHS', nr: '60x4' } } },
+  D: { col: { cls: 'GL24h', shape: 'rect', b: 200, h: 200 }, beam: { cls: 'GL24h', shape: 'rect', b: 160, h: 480 }, top: { cls: 'C24', shape: 'rect', b: 50, h: 175 }, bot: { cls: 'C24', shape: 'rect', b: 50, h: 150 }, diag: { cls: 'C24', shape: 'rect', b: 50, h: 100 }, vert: { cls: 'C24', shape: 'rect', b: 50, h: 100 }, arch: { cls: 'GL24h', shape: 'rect', b: 160, h: 400 }, tie: { cls: 'C24', shape: 'rect', b: 75, h: 150 } },
+};
+const GEN_NAME = { col: 'Słupy', beam: 'Rygle', top: 'Pas górny', bot: 'Pas dolny', diag: 'Krzyżulce', vert: 'Słupki', arch: 'Łuk', tie: 'Ściąg' };
 UI.generator = function (first) {
   const P = RA.P, types = GEN.TYPES;
   let type = UI._genType || 'portal'; const par = {};
+  const cur = M.sec(P, UI.curSec());
+  let mat = UI._genMat || (cur ? cur.mat : 'C');
   const secFor = {};
+  const defSec = g => SEC.make(mat, Q.clone((GEN_DEF[mat] || GEN_DEF.C)[g] || (GEN_DEF[mat] || GEN_DEF.C).beam));
   const draw = () => {
     const T = types[type]; T.fields.forEach(f => { if (par[f[0]] === undefined) par[f[0]] = f[2]; });
     const fields = T.fields.map(f => f[3] ? Q.rowSel(f[1], f[0], par[f[0]], f[3], { wide: true }) : `<div class="row wide"><label>${esc(f[1])}</label><input class="txt" data-f="${f[0]}" value="${esc(par[f[0]])}"></div>`).join('');
-    const grpRows = T.groups.map(g => { if (!secFor[g]) secFor[g] = UI.curSec() || ''; return `<div class="row wide"><label>Przekrój: ${esc(GEN.GROUPS[g])}</label><select data-g="${g}">${secOpts(secFor[g], !P.sections.length)}<option value="__new">+ nowy przekrój…</option></select></div>`; }).join('');
+    const ofMat = P.sections.filter(s => s.mat === mat);
+    const grpRows = T.groups.map(g => {
+      if (!secFor[g] || (secFor[g] !== '__auto' && !ofMat.some(s => s.id === secFor[g]))) secFor[g] = '__auto';
+      return `<div class="row wide"><label>Przekrój: ${esc(GEN.GROUPS[g])}</label><select data-g="${g}"><option value="__auto" ${secFor[g] === '__auto' ? 'selected' : ''}>nowy: ${esc(SEC.fullLabel(defSec(g)))}</option>${ofMat.map(s => `<option value="${esc(s.id)}" ${s.id === secFor[g] ? 'selected' : ''}>${esc((s.name ? s.name + ' · ' : '') + SEC.fullLabel(s))}</option>`).join('')}<option value="__new">+ inny nowy przekrój…</option></select></div>`;
+    }).join('');
     let prev = '';
     try { const B = GEN.build(type, par); prev = genPreview(B); } catch (e) { prev = `<p class="hint">${esc(e.message)}</p>`; }
     const m = Q.modal(`<h3>Generator układów</h3>
       <div class="gentypes">${Object.keys(types).map(k => `<button class="gt ${k === type ? 'on' : ''}" data-t="${k}">${genIcon(k)}<span>${esc(types[k].n)}</span></button>`).join('')}</div>
+      <div class="genmat"><span>Materiał układu:</span><div class="segsw">${[['C', 'Żelbet'], ['S', 'Stal'], ['D', 'Drewno']].map(([k, l]) => `<button data-m="${k}" class="${mat === k ? 'on' : ''}">${l}</button>`).join('')}</div><span class="hint">moduł wymiarowania dobierany automatycznie wg materiału przekroju</span></div>
       <div class="gencols"><div><div class="fields0">${fields}${grpRows}</div>
         <div class="fields0">${Q.rowSel('Dołącz do modelu', 'mode', P.bars.length && !first ? 'add' : 'replace', [['replace', 'zastąp model'], ['add', 'dodaj do modelu']], { wide: true })}${Q.rowNum('przesunięcie Δx', 'dx', 0, 'm')}${Q.rowNum('przesunięcie Δz', 'dz', 0, 'm')}</div></div>
         <div class="genprev">${prev}</div></div>
       <p class="hint">Generator tworzy geometrię, podpory i przekroje – bez obciążeń. Obciążenia zadajesz w przypadkach (narzędzie „Obciążenie” albo prawy klik na pręcie).</p>
       <div class="dbtn"><button class="btn" data-a="0">${first ? 'Rysuj ręcznie' : 'Anuluj'}</button><button class="btn pri" data-a="1">Generuj</button></div>`, 'genwin');
     $$('[data-t]', m).forEach(b => b.onclick = () => { type = b.dataset.t; UI._genType = type; Object.keys(par).forEach(k => delete par[k]); draw(); });
-    $$('[data-f]', m).forEach(f => f.addEventListener('change', () => { const o = Q.readFields(m); Object.keys(o).forEach(k => { if (!['mode', 'dx', 'dz'].includes(k)) par[k] = typeof o[k] === 'number' ? String(o[k]).replace('.', ',') : o[k]; }); draw(); }));
-    $$('[data-g]', m).forEach(sl => sl.onchange = () => { if (sl.value === '__new') { const g = sl.dataset.g; UI.secEdit(SEC.make(g === 'col' || g === 'top' || g === 'bot' ? 'S' : 'S'), true, () => { secFor[g] = P.sections[P.sections.length - 1].id; draw(); }); return; } secFor[sl.dataset.g] = sl.value; });
+    $$('[data-m]', m).forEach(b => b.onclick = () => { Object.assign(par, readPar(m)); mat = b.dataset.m; UI._genMat = mat; Object.keys(secFor).forEach(k => delete secFor[k]); draw(); });
+    $$('[data-f]', m).forEach(f => f.addEventListener('change', () => { Object.assign(par, readPar(m)); draw(); }));
+    $$('[data-g]', m).forEach(sl => sl.onchange = () => { if (sl.value === '__new') { const g = sl.dataset.g; Object.assign(par, readPar(m)); UI.secEdit(defSec(g), true, () => { secFor[g] = P.sections[P.sections.length - 1].id; draw(); }); return; } secFor[sl.dataset.g] = sl.value; });
     m.onclick = e => { const b = e.target.closest('[data-a]'); if (!b) return; if (b.dataset.a === '0') { Q.closeModal(); return; }
-      if (!P.sections.length) { Q.toast('Najpierw dodaj przekrój (lista „Przekrój” → „+ nowy przekrój…”).'); return; }
-      const o = Q.readFields(m); const map = {}; T.groups.forEach(g => { map[g] = secFor[g] || P.sections[0].id; }); map._ = P.sections[0].id;
+      const o = Q.readFields(m), map = {}, made = {};
+      T.groups.concat(['_']).forEach(g => {
+        const gg = g === '_' ? T.groups[0] : g;
+        if (secFor[gg] && secFor[gg] !== '__auto') { map[g] = secFor[gg]; return; }
+        const s = defSec(gg), key = D.secKey(s);
+        let ex = P.sections.find(q => q.mat === mat && D.secKey(Object.assign({}, s, { kEI: q.kEI })) === D.secKey(q));
+        if (!ex && made[key]) ex = made[key];
+        if (!ex) { ex = Object.assign(s, { id: 's' + (P.seq.sec++), name: GEN_NAME[gg] || '' }); P.sections.push(ex); made[key] = ex; }
+        map[g] = ex.id;
+      });
       GEN.apply(P, type, par, map, { replace: o.mode === 'replace', dx: o.dx, dz: o.dz });
-      Q.closeModal(); RA.change(); setTimeout(RA.cv.fit, 30); Q.toast(`Wygenerowano: ${types[type].n}. Teraz zadaj obciążenia.`); };
+      UI._cur = map[T.groups[0]];
+      Q.closeModal(); RA.change(); setTimeout(RA.cv.fit, 30); Q.toast(`Wygenerowano: ${types[type].n} (${SEC.MAT_KIND[mat].toLowerCase()}). Teraz zadaj obciążenia.`); };
   };
-  if (!P.sections.length) { P.sections.push(Object.assign(SEC.make('S', { prof: { typ: 'walc', seria: 'HEB', nr: 240 } }), { id: 's' + (P.seq.sec++), name: 'Słupy' })); P.sections.push(Object.assign(SEC.make('S', { prof: { typ: 'walc', seria: 'IPE', nr: 400 } }), { id: 's' + (P.seq.sec++), name: 'Rygle' })); secFor.col = P.sections[0].id; secFor.beam = P.sections[1].id; secFor.top = secFor.bot = P.sections[0].id; secFor.diag = secFor.vert = P.sections[0].id; secFor.arch = P.sections[0].id; secFor.tie = P.sections[0].id; }
+  const readPar = (m) => { const o = Q.readFields(m), out = {}; Object.keys(o).forEach(k => { if (!['mode', 'dx', 'dz'].includes(k)) out[k] = typeof o[k] === 'number' ? String(o[k]).replace('.', ',') : o[k]; }); return out; };
   draw();
 };
 function genPreview(B) {
@@ -441,7 +466,7 @@ function genPreview(B) {
   return `<svg width="${Wd}" height="${Hd}" viewBox="0 0 ${Wd} ${Hd}">${s}</svg>`;
 }
 function genIcon(k) {
-  const I = { beam: 'M3 14h18M5 14l-2 4h4zM19 14l-2 4h4z', cant: 'M4 6v12M4 12h16', col: 'M12 3v16M8 19h8', portal: 'M5 20V6h14v14', gable: 'M4 20V9l8-5 8 5v11', truss: 'M3 16h18M3 8h18M3 16l4-8 4 8 4-8 4 8 2-8', arch: 'M3 18c3-12 15-12 18 0' };
+  const I = { beam: 'M3 14h18M5 14l-2 4h4zM19 14l-2 4h4z', cant: 'M4 6v12M4 12h16', col: 'M12 3v16M8 19h8', portal: 'M5 20V6h14v14', gable: 'M4 20V9l8-5 8 5v11', truss: 'M3 16h18M3 8h18M3 16l4-8 4 8 4-8 4 8 2-8', arch: 'M3 18c3-12 15-12 18 0', roof: 'M2 17h20L12 6zM8 17l1.5-6.5M16 17l-1.5-6.5M8 17l4-11M16 17l-4-11' };
   return `<svg viewBox="0 0 24 24" width="30" height="30"><path d="${I[GEN.TYPES[k].icon] || I[k] || ''}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
 }
 
@@ -464,9 +489,27 @@ UI.tables = function () {
   draw();
 };
 
+/* ------------------------------------------------------------ przekrój prętów z menu kontekstowego */
+UI.sectionMenu = function (ids, x, y) {
+  const P = RA.P, bars = ids.map(id => M.bar(P, id)).filter(Boolean);
+  const cur = new Set(bars.map(b => b.sec)), one = cur.size === 1 ? [...cur][0] : null;
+  const assign = sid => { bars.forEach(b => { b.sec = sid; }); UI._cur = sid; RA.change(); Q.toast(`Przekrój ${SEC.fullLabel(M.sec(P, sid))} → pręty ${ids.join(', ')}`); };
+  const items = [{ label: `<b>Przekrój – pręty ${esc(ids.join(', '))}</b>`, dis: true }];
+  ['C', 'S', 'D'].forEach(mt => {
+    const ls = P.sections.filter(s => s.mat === mt); if (!ls.length) return;
+    items.push({ label: `<small>${esc(SEC.MAT_KIND[mt])}</small>`, dis: true });
+    ls.forEach(s => items.push({ label: `${s.id === one ? '● ' : '&nbsp;&nbsp; '}${esc((s.name ? s.name + ' · ' : '') + SEC.fullLabel(s))}`, fn: () => assign(s.id) }));
+  });
+  items.push({ sep: true });
+  [['C', 'żelbetowy'], ['S', 'stalowy'], ['D', 'drewniany']].forEach(([mt, n]) => items.push({ label: `+ nowy przekrój ${n}…`, fn: () => UI.secEdit(SEC.make(mt), true, () => { assign(P.sections[P.sections.length - 1].id); Q.closeModal(); }) }));
+  items.push({ label: 'Przekroje i materiały…', fn: () => UI.sections() });
+  Q.menu(x, y, items);
+};
+
 /* ------------------------------------------------------------ wymiarowanie z rysunku */
 UI.designFromBar = function (bid) {
-  const P = RA.P; const ex = D.elementOf(P, bid); if (ex) { RA.mod.open(ex.id); return; }
+  const P = RA.P; const ex = D.elementOf(P, bid);
+  if (ex) { const s = M.sec(P, (M.bar(P, bid) || {}).sec); if (s && D.modOfMat(s.mat) !== ex.mod) { RA.syncDesign(); } RA.mod.open(ex.id); return; }
   const prop = D.detect(P).find(q => q.bars.includes(bid));
   if (!prop) { Q.toast('Ten pręt nie może być wymiarowany jako belka lub słup (pręt kratowy, brak przekroju?).'); return; }
   const el = D.create(P, prop); RA.change({ now: true });

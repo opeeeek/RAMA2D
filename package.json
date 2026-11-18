@@ -7,7 +7,7 @@
     "extract": "node tools/extract-modules.js",
     "build": "node tools/build.js",
     "exe": "bash host/build.sh",
-    "test": "node tests/fem.test.js && node tests/model.test.js && node tests/generator.test.js && node tests/design.test.js"
+    "test": "node tests/fem.test.js && node tests/model.test.js && node tests/generator.test.js && node tests/design.test.js && node tests/sync.test.js"
   },
   "license": "UNLICENSED"
 }

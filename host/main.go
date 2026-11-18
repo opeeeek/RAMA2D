@@ -188,7 +188,7 @@ func main() {
 			Title:  "RAMA2D",
 			Width:  1500,
 			Height: 950,
-			IconId: iconID, // 1 – gdy zbudowano z zasobem ikony (rsrc_windows_amd64.syso, zob. host/build.sh), 0 – ikona domyślna
+			IconId: iconID, // zasób ikony z rsrc_windows_amd64.syso (zob. host/icon.go)
 			Center: true,
 		},
 	})

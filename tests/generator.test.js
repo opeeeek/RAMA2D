@@ -6,7 +6,12 @@ Object.keys(GEN.TYPES).forEach(t => {
   if (t === 'truss') ['pratt', 'howe', 'warren', 'warrenv', 'k'].forEach(ty => ['par', 'trap', 'tri', 'mono', 'bow'].forEach(sh => variants.push({ type: ty, shape: sh })));
   if (t === 'arch') ['pin2', 'fix', 'pin3', 'tied'].forEach(s => variants.push({ sup: s, shape: 'circ' }));
   if (t === 'portal') variants.push({ spans: '6; 6; 8', H: '4; 3,5; 3,5', joint: 'hinge', base: 'fix' }, { spans: '6', H: '4', base: 'pin' });
-  if (t === 'gable') variants.push({ ridge: 'hinge' }, { bays: 3, tie: 'yes', base: 'fix' });
+  if (t === 'gable') {
+    variants.push({ ridge: 'hinge' }, { spans: '', bays: 3, L: 18, f: 1.5, alpha: '', tie: 'yes', base: 'fix' });
+    ['gable', 'gable1', 'mono', 'saw'].forEach(roof => [{ spans: '18' }, { spans: '12; 15; 12', base: 'fix' }].forEach(v => variants.push(Object.assign({ roof, alpha: '12', ovh: '0,8' }, v))));
+    variants.push({ roof: 'gable1', spans: '12; 12; 12', tie: 'yes', alpha: '8' }, { roof: 'gable', spans: '20', joint: 'hinge', base: 'fix', alpha: '15' });
+  }
+  if (t === 'roof') ['fink', 'fink2', 'howe', 'pratt', 'warren'].forEach(ty => [{}, { h0: '0,3', ovh: '0' }, { roof: 'mono', h0: '0,4' }].forEach(v => { if (v.roof === 'mono' && ty.startsWith('fink')) return; variants.push(Object.assign({ type: ty, alpha: '25' }, v)); }));
   if (t === 'beam') variants.push({ spans: '3×5', cantL: 1.5, cantR: 2 });
   variants.forEach(v => {
     const P = M.newProject(); P.sections.push(Object.assign(SEC.make('S', { prof: { typ: 'walc', seria: 'HEB', nr: 200 } }), { id: 's1' }));

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- RAMA2D – ikona w małych rozmiarach (16–32 px): rama, wykres momentów, utwierdzenia, obciążenie -->
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26395b"/><stop offset="1" stop-color="#101a2b"/></linearGradient></defs>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="url(#bg)"/>
+  <path d="M7 5.5H25" stroke="#7db4ff" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M10 6.5V9M16 6.5V9M22 6.5V9" stroke="#7db4ff" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M7.5 12.5Q16 29 24.5 12.5Z" fill="#ff6b5f" fill-opacity=".6"/>
+  <path d="M7.5 27V11.5H24.5V27" fill="none" stroke="#eef3fa" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M3.5 27.8H11.5M20.5 27.8H28.5" stroke="#9fb3d4" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

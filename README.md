@@ -9,8 +9,9 @@ z **wymiarowaniem elementów wg Eurokodów** w modułach tematycznych:
 | **Stal** | BelkaStal + SłupStal | PN-EN 1993-1-1 |
 | **Drewno** | BelkaDR + SłupDrewniany | PN-EN 1995-1-1 |
 
-Model budowany na głównym ekranie jest przenoszony do wybranego modułu (schemat statyczny, przekrój, materiał,
-obciążenia), a zmiany przekroju, materiału i rozpiętości wprowadzone w module wracają do modelu i statyki –
+Model budowany na głównym ekranie jest przenoszony do modułu odpowiedniego dla materiału przekroju (schemat
+statyczny, przekrój, materiał, obciążenia), a zmiany wprowadzone w module – przekrój, materiał, rozpiętości,
+liczba przęseł, wsporniki, podpory, przeguby, obciążenia, warunki podparcia słupów – wracają do modelu i statyki –
 **automatycznie, w obie strony**.
 
 ## Uruchomienie
@@ -26,7 +27,9 @@ obciążenia), a zmiany przekroju, materiału i rozpiętości wprowadzone w modu
    rama dwuspadowa, kratownice Pratta, Howe’a, Warrena, K o pasach równoległych, trapezowe, trójkątne, pulpitowe,
    łukowe, łuki) albo rysowanie: narzędzia po lewej (V zaznacz, B pręty, N węzeł na pręcie, S podpora, L obciążenie,
    H przegub, D usuń), linia poleceń pod rysunkiem (`x; z`, `@dx; dz`, `<L; kąt`), menu kontekstowe (prawy klik),
-   panel właściwości po prawej, cofanie i ponawianie (Ctrl+Z / Ctrl+Y).
+   panel właściwości po prawej, cofanie i ponawianie (Ctrl+Z / Ctrl+Y). Przekrój pręta: lewy przycisk zaznacza
+   pręt (Shift / ramka – kilka prętów), prawy otwiera menu → **Przekrój ▸** – lista przekrojów projektu
+   pogrupowana wg materiału oraz tworzenie nowego przekroju.
 2. **Przekroje** – żelbetowe (prostokątny, teowy, okrągły, pierścieniowy; klasy C12/15–C90/105), stalowe
    (IPE, HEA, HEB, HEM, UPN, UPE, L, SHS, RHS, CHS, 2×C, blachownice; S235–S460), drewniane (lite C14–C50, D18–D80,
    klejone GL20h–GL32c, LVL; przekroje wieloczęściowe, okrągłe). Tablice pochodzą z silników modułów.
@@ -42,7 +45,9 @@ obciążenia), a zmiany przekroju, materiału i rozpiętości wprowadzone w modu
 6. **Wymiarowanie** – elementy wykrywane automatycznie (belki – ciągi współliniowych prętów z przęsłami
    i wspornikami; słupy – pręty między węzłami stropów) albo z menu kontekstowego pręta („Wymiaruj w module…”).
    Wytężenie każdego elementu liczone jest silnikiem modułu (także bez otwierania modułu) i pokazywane w tabeli
-   oraz na rysunku (tryb „Wytężenie”).
+   oraz na rysunku (tryb „Wytężenie”). **Moduł wybierany jest automatycznie wg materiału** przekroju prętów
+   (beton → Żelbet, stal → Stal, drewno → Drewno); zmiana przekroju na inny materiał przenosi element do
+   właściwego modułu.
 7. **Moduły** (zakładki Żelbet / Stal / Drewno, przełącznik Belki / Słupy) – pełne, oryginalne programy
    z zaimportowanym elementem; pasek nad modułem pokazuje powiązanie z modelem, schemat, podpory i uwagi.
 
@@ -50,17 +55,23 @@ obciążenia), a zmiany przekroju, materiału i rozpiętości wprowadzone w modu
 
 | Dane | Kierunek | Uwagi |
 |---|---|---|
-| przęsła, wsporniki, węzły pośrednie, przeguby | model → moduł | zmiana rozpiętości w module **przesuwa węzły modelu** (moduł → model) |
-| podpory belki | model → moduł | podpory zewnętrzne i pręty dochodzące od spodu (słupy); podatność obrotowa od prętów dochodzących – **rama zastępcza** k_φ = Σ α·EI/L (α = 4 lub 3, z odkształceniami postaciowymi gdy uwzględniane); do wyboru: sprężyste / przegubowe / utwierdzone |
-| obciążenia | model → moduł | jedno oddziaływanie modułu na przypadek modelu (te same kategorie, ψ, grupy wykluczające); siły przekazywane w węzłach połączeń – z analizy globalnej; ciężar własny elementu liczy moduł |
-| siły na końcach słupów | model → moduł | słup wycięty z ramy (SłupStal, SłupDrewniany: utwierdzenie + siły w głowicy – rozkład momentów identyczny jak w ramie; SłupŻB: schemat wg usztywnienia ramy z kompensacją momentów końcowych) |
+| schemat belki: rozpiętości, liczba przęseł, wsporniki, węzły, przeguby | **model ↔ moduł** | zmiana rozpiętości w module **przesuwa węzły modelu** (oś pozioma / pionowa – cały układ wg rzutu, rama pozostaje regularna); dodane przęsło lub wspornik przedłuża belkę w modelu (nowe pręty i podpory), usunięte – skraca ją; przegub w przęśle lub nad podporą – przegub pręta w modelu |
+| podpory belki | **model ↔ moduł** | podpory zewnętrzne i pręty dochodzące od spodu (słupy); podatność obrotowa od prętów dochodzących – **rama zastępcza** k_φ = Σ α·EI/L (α = 4 lub 3, z odkształceniami postaciowymi gdy uwzględniane); do wyboru: sprężyste / przegubowe / utwierdzone. Zmiana w module: podpora zewnętrzna – rodzaj, przesuw, podatność k_v, k_φ; podpora będąca słupem – przegub / połączenie sztywne belki ze słupem (pozostałe warunki wynikają z prętów modelu – komunikat) |
+| obciążenia | **model ↔ moduł** | jedno oddziaływanie modułu na przypadek modelu (te same kategorie, ψ, grupy wykluczające); siły przekazywane w węzłach połączeń – z analizy globalnej; ciężar własny elementu liczy moduł. Zmiana pozycji w module zmienia obciążenia przypadku na prętach elementu, usunięcie – usuwa je; **nowa pozycja dodana w module trafia do modelu** (stałe – do pierwszego przypadku G, zmienne i wyjątkowe – nowy przypadek z kategorią, ψ i grupą z modułu) i wraca do modułu jako pozycja „z ramy”. Składowe spoza płaszczyzny układu (obciążenia poziome z płaszczyzny, skręcanie) – komunikat |
+| siły na końcach słupów | model → moduł | słup wycięty z ramy (SłupStal, SłupDrewniany: podstawa jak w modelu – utwierdzenie / przegub / sprężyna, siły z ramy w głowicy – rozkład momentów identyczny jak w ramie; SłupŻB: schemat wg podparcia i usztywnienia ramy z kompensacją momentów końcowych) |
+| warunki podparcia słupa | **model ↔ moduł** | zmiana w module: podstawa (utwierdzenie / przegub / podatna) – podpora lub połączenie pręta w modelu; głowica podparta / swobodna – podpora pozioma w modelu; przegub / połączenie sztywne w głowicy – przegub pręta |
+| ustawienia kombinacji (6.10 / 6.10a,b, γ, ξ, ψ w wyjątkowej) | model ↔ moduł | |
 | długości wyboczeniowe | model → moduł | SłupStal L_cr,y i SłupDrewniany l_ef,y z globalnej postaci wyboczenia (PN-EN 1993-1-1, 5.2.2(8)); SłupŻB – k₁, k₂ ze sztywności węzłów (PN-EN 1992-1-1, 5.8.3.2) |
 | przekrój, materiał | **model ↔ moduł** | zmiana w module zmienia przekrój prętów elementu (nowy przekrój, gdy dotychczasowy jest wspólny z innymi prętami), statyka przelicza się, moduł dostaje zaktualizowane siły |
 | nazwa elementu | model ↔ moduł | |
 | zbrojenie, ekspozycja, stężenia, połączenia, pożar itd. | moduł | należą do modułu, zapisywane w projekcie RAMA2D |
 
-Dane sterowane z modelu zmienione w module są przywracane z komunikatem. Obciążenia dodane w module (bez znacznika
-„rama”) są zachowywane i nie wpływają na model. Poprawność przenoszenia sprawdza `tests/design.test.js`:
+Z modułu do modelu przenoszone są różnice względem stanu, który moduł miał poprzednio – zmiana jednej wartości
+nie nadpisuje pozostałych danych modelu (np. podatności podpór od słupów). Zmian, których nie da się przenieść
+(np. usunięcie podpory będącej słupem), program nie wprowadza – moduł wraca do stanu z modelu z komunikatem.
+Podczas wpisywania wartości w polu modułu odświeżenie modułu czeka do opuszczenia pola. Przenoszenie moduł → model
+sprawdza `tests/sync.test.js` (rozpiętości, wsporniki, liczba przęseł, podpory, przeguby, obciążenia, słupy, ramy
+wielonawowe), model → moduł – `tests/design.test.js`:
 statyka liczona silnikami modułów jest porównywana ze statyką ramy (belki ciągłe ze wspornikami, pręty odwrócone,
 obciążenia trapezowe, siły w węzłach, rama zastępcza, słupy ze sprężystym obciążeniem poziomym i momentem).
 
@@ -83,7 +94,8 @@ src/ui/, src/css/, src/index.html interfejs programu
 tools/engines.js                  silniki modułów ładowane „bezgłowo” (izolowane zakresy EC2 / EC5 / BS)
 tools/patches.js                  łatki integracyjne modułów (stosowane przy budowaniu, oryginały bez zmian)
 tools/build.js                    budowanie dist/RAMA2D.html
-host/                             program Windows (Go + WebView2) → RAMA2D.exe
+tools/icon.js                     ikona programu: src/icon/*.svg → host/icon.png, icon.ico, rsrc_windows_amd64.syso
+host/                             program Windows (Go + WebView2) → RAMA2D.exe (z ikoną w zasobach)
 tests/                            testy (MES na rozwiązaniach analitycznych, kombinacje, generator, wymiana danych)
 ```
 
@@ -93,6 +105,7 @@ tests/                            testy (MES na rozwiązaniach analitycznych, ko
 node tools/extract-modules.js   # po podmianie któregoś z programów .exe – ponowne wyodrębnienie modułów
 node tools/build.js             # dist/RAMA2D.html
 ./host/build.sh                 # RAMA2D.exe (Go ≥ 1.21; kompilacja skrośna działa także na Linuksie)
+node tools/icon.js              # tylko po zmianie ikony (src/icon/*.svg; wymaga Playwright z Chromium)
 npm test                        # testy
 ```
 
@@ -110,6 +123,8 @@ w `tools/engines.js`, opis w `D.MODS` i funkcję mapowania `MAP.<moduł>_<rodzaj
 ## Ograniczenia
 
 - Analiza płaska; zginanie z płaszczyzny i skręcanie – ustawienia w modułach.
+- Pozycje obciążeń dodane w modułach słupów (siły w głowicy są wynikiem analizy ramy) oraz obciążenia etapu
+  montażu w BelkaStal pozostają w module i nie są przenoszone do modelu.
 - Belki w modułach liczone są w schemacie ramy zastępczej: dla obciążeń poziomych (wiatr) momenty od pracy ramy
   w belkach nie są przenoszone do BelkaŻB i BelkaDR (moduły nie przyjmują momentów skupionych) – program
   ostrzega o pominiętych składnikach na pasku modułu.

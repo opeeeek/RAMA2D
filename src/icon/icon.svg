@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- RAMA2D – ikona programu: rama portalowa z obciążeniem rozłożonym, wykres momentów, utwierdzenia -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26395b"/><stop offset="1" stop-color="#101a2b"/></linearGradient>
+    <linearGradient id="mo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6b5f" stop-opacity=".55"/><stop offset="1" stop-color="#ff6b5f" stop-opacity=".2"/></linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <rect x="9.5" y="9.5" width="237" height="237" rx="50.5" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="3"/>
+  <!-- obciążenie rozłożone q -->
+  <g stroke="#7db4ff" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M62 42H194"/>
+    <path d="M62 42V66M95 42V66M128 42V66M161 42V66M194 42V66"/>
+  </g>
+  <g fill="#7db4ff">
+    <path d="M53 64h18l-9 15zM86 64h18l-9 15zM119 64h18l-9 15zM152 64h18l-9 15zM185 64h18l-9 15z"/>
+  </g>
+  <!-- wykres momentów zginających -->
+  <path d="M62 100Q128 222 194 100Z" fill="url(#mo)" stroke="#ff6b5f" stroke-width="6" stroke-linejoin="round"/>
+  <!-- rama: słupy i rygiel -->
+  <path d="M62 210V92H194V210" fill="none" stroke="#eaf0f9" stroke-width="16" stroke-linejoin="round"/>
+  <!-- węzły -->
+  <g fill="#eaf0f9"><circle cx="62" cy="92" r="13"/><circle cx="194" cy="92" r="13"/></g>
+  <g fill="#1b2a44"><circle cx="62" cy="92" r="5"/><circle cx="194" cy="92" r="5"/></g>
+  <!-- utwierdzenia -->
+  <g fill="#9fb3d4"><rect x="36" y="208" width="52" height="11" rx="3"/><rect x="168" y="208" width="52" height="11" rx="3"/></g>
+  <g stroke="#9fb3d4" stroke-width="4" stroke-linecap="round" opacity=".7">
+    <path d="M42 233l10-12M56 233l10-12M70 233l10-12M174 233l10-12M188 233l10-12M202 233l10-12"/>
+  </g>
+</svg>

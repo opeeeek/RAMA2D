@@ -1,3 +1,4 @@
 host/RAMA2D.html
 node_modules/
 *.syso
+!host/rsrc_windows_amd64.syso
