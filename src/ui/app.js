@@ -79,7 +79,7 @@ RA.syncDesign = function (o) {
     if (!el.bars.length) return;
     const out = D.toModule(P, R, el);
     if (out.err) { el.err = out.err; el.warn = []; return; }
-    el.err = null; el.warn = out.warn; el.sch = out.sch;
+    el.err = null; el.warn = out.warn; el.sch = out.sch; el.frameG = out.frameG || null;
     const js = JSON.stringify(out.st);
     if (js !== el.stJson) { el.st = out.st; el.stJson = js; el.res = null; if (RA.mod) RA.mod.push(el); }
   });

@@ -157,7 +157,7 @@ function isSupport(P, R, T, n, excl, dir) {
     if (excl.has(b.id)) return false;
     const o = M().node(P, other(b, n)), g = M().barGeom(P, b), u = [(o.x - N0.x) / g.L, (o.z - N0.z) / g.L];
     const along = Math.abs(u[0] * perp[0] + u[1] * perp[1]);
-    if (along < 0.5) return false;                                    // pręt prawie równoległy do ciągu
+    if (along < 0.2) return false;                                    // pręt prawie równoległy do ciągu
     const below = (u[0] * perp[0] + u[1] * perp[1]) < 0;              // po stronie „spodu”
     if (below) return true;
     // wieszak: pręt powyżej rozciągany od obciążeń stałych
@@ -332,7 +332,7 @@ MAP.ZB_beam = function (P, R, el, prev) {
   S.loads.NEd = Math.abs(NEd) > 5 ? r1(NEd) : 0;
   if (Math.abs(NEd) > 5) warn.push(`Siła podłużna z ramy N_Ed = ${r1(NEd)} kN (${NEd > 0 ? 'ściskanie' : 'rozciąganie'}) – przyjęta w module jako stała na długości belki.`);
   if (Math.abs(sch.O.s) > 0.02) warn.push(`Belka nachylona (${r1(sch.O.ang)}°) – BelkaŻB liczy belkę poziomą; obciążenia przyjęto prostopadle do osi.`);
-  return { st: E.normalize(S), warn, sch };
+  return { st: E.normalize(S), warn, sch, flip };
 };
 // siła podłużna SGN (ściskanie dodatnie) o największej wartości bezwzględnej w ciągu
 function axialULS(P, R, el) {
@@ -562,7 +562,7 @@ MAP.DR_beam = function (P, R, el, prev) {
   lw.forEach(w => warn.push(`BelkaDR: pominięto ${w}.`));
   S.loads.perm = perm.concat(own('perm')); S.loads.var = vr.concat(own('var')); S.loads.acc = acc.concat(own('acc'));
   S.loads.sw = swAny; S.loads.comb = P.settings.comb; S.loads.gG = +P.settings.gG; S.loads.gGi = +P.settings.gGinf; S.loads.gQ = +P.settings.gQ; S.loads.xi = +P.settings.xi; S.loads.accPsi = P.settings.accPsi;
-  return { st: E.normalize(S), warn, sch };
+  return { st: E.normalize(S), warn, sch, flip };
 };
 
 /* ---------------------------------------------------------------- DREWNO – SłupDrewniany */
@@ -604,6 +604,7 @@ D.toModule = function (P, R, el) {
   const fn = MAP[el.mod + '_' + el.kind]; if (!fn) return { err: 'Nieznany moduł.' };
   let out;
   try { out = fn(P, R, el, el.st); } catch (e) { console.error(e); return { err: 'Błąd przenoszenia danych: ' + e.message }; }
+  if (!out.err && el.kind === 'beam') out.frameG = D.frameGMoments(P, R, { sch: out.sch }, !!out.flip);
   return out;
 };
 D.app = el => D.MODS[el.mod][el.kind].app;
@@ -745,7 +746,47 @@ D.check = function (el) {
   eta = sumEta !== undefined ? sumEta : Math.max(0, wu);
   if (typeof r.nFail === 'number') fails = r.nFail; else if (typeof r.fails === 'number') fails = r.fails;
   const ok = !errs && !fails && r.ok !== false && eta <= 1 + 1e-9;
-  return { eta, worst: worst ? (worst.name || worst.n || worst.nazwa || worst.opis || worst.id || '') : '', fails, errors: r.errors || [], ok, n: (r.checks || []).length };
+  // niespełnione warunki bez wartości wytężenia (np. brak zbrojenia) – opis zamiast „0%”
+  const failC = (r.checks || []).find(c => c.status === 'fail' && c.info !== true);
+  const note = !ok && !(eta > 0) && failC ? (failC.name || failC.n || '').replace(/\s*–.*$/, '') : '';
+  return { eta: !ok && !(eta > 0) ? null : eta, note, worst: worst ? (worst.name || worst.n || worst.nazwa || worst.opis || worst.id || '') : '', fails, errors: r.errors || [], ok, n: (r.checks || []).length, dev: D.deviation(el, r) };
+};
+
+/* ------------------------------------------------------------ zgodność schematu modułu ze statyką ramy */
+// momenty od obciążeń stałych (G) liczone silnikiem modułu w punktach elementu belkowego [x (m), M (kNm)]
+D.moduleGMoments = function (el, r) {
+  try {
+    if (el.mod === 'ZB') { const st = r.st; if (!st || !st.E || !st.E.G) return null; return { x: st.x.map(v => v / 1000), M: Array.from(st.E.G.My, v => v / 1e6) }; }
+    if (el.mod === 'ST') { const s = r.an && r.md ? r.an.res[r.md.nE - 1] : null; if (!s) return null; const ids = Object.keys(s).filter(k => { const c = r.md.cases.find(q => q.id === k); return c && c.rodzaj === 'G'; }); const M0 = new Float64Array(r.an.xs.length); ids.forEach(k => s[k].tot.M.forEach((v, i) => { M0[i] += v; })); return { x: Array.from(r.an.xs, v => v / 1000), M: Array.from(M0, v => v / 1e6) }; }
+    if (el.mod === 'DR') { const its = (r.st && r.st.items || []).filter(o => o.cls === 'G'); if (!its.length) return null; const M0 = new Float64Array(r.st.stX.length); its.forEach(o => o.units.forEach(u => u.My.forEach((v, i) => { M0[i] += v; }))); return { x: r.st.stX, M: Array.from(M0) }; }
+  } catch (e) { /* */ }
+  return null;
+};
+// największa różnica momentów G (moduł vs rama) odniesiona do max |M| w ramie
+D.deviation = function (el, r) {
+  if (el.kind !== 'beam' || !el.frameG) return null;
+  const mm = D.moduleGMoments(el, r); if (!mm) return null;
+  const F = el.frameG; let fmax = 1e-9, dmax = 0, at = null;
+  F.forEach(p => { fmax = Math.max(fmax, Math.abs(p.M)); });
+  F.forEach(p => { let bi = 0; mm.x.forEach((x, i) => { if (Math.abs(x - p.x) < Math.abs(mm.x[bi] - p.x)) bi = i; }); const d = Math.abs(mm.M[bi] - p.M); if (d > dmax) { dmax = d; at = { x: p.x, frame: p.M, mod: mm.M[bi] }; } });
+  return { rel: dmax / fmax, at, fmax };
+};
+// momenty od obciążeń stałych w ramie wzdłuż elementu (w układzie modułu: x od początku ciągu lub od podpory wspornika)
+D.frameGMoments = function (P, R, el, flip) {
+  const O = el.sch && el.sch.O; if (!O || !R || !R.ok) return null;
+  const G = P.cases.filter(c => c.cat === 'G'); if (!G.length) return null;
+  const out = [];
+  O.seq.forEach((q, k) => {
+    const ei = R.ctx.bIdx.get(q.bar.id); if (ei === undefined) return;
+    const L = O.xs[k + 1] - O.xs[k];
+    [0.1, 0.3, 0.5, 0.7, 0.9].forEach(t => {
+      const xl = t * L; let M0 = 0;
+      G.forEach(c => { const st = R.cases[c.id].bars[ei]; let b = st[0]; st.forEach(s => { if (Math.abs(s.x - xl) < Math.abs(b.x - xl)) b = s; }); M0 += b.M; });
+      const xc = q.rev ? O.xs[k + 1] - xl : O.xs[k] + xl, Mc = (q.rev ? -1 : 1) * M0;
+      out.push({ x: flip ? O.L - xc : xc, M: flip ? Mc : Mc });
+    });
+  });
+  return out;
 };
 
 root.RDES = D;

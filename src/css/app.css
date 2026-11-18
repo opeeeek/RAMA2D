@@ -157,6 +157,7 @@ table.ltab td:last-child { white-space: nowrap; text-align: right; }
 .modbar .li select { margin-left: 4px; }
 .modbar .wbtn { color: var(--warn); border-color: var(--wrnln); background: var(--warnbg); }
 .modbar .lsup { flex-basis: 100%; color: var(--ink3); font-size: 11.5px; padding-left: 2px; }
+.modbar .devw { color: var(--warn); background: var(--warnbg); border: 1px solid var(--wrnln); padding: 2px 8px; border-radius: 12px; font-size: 12px; }
 .modhost { flex: 1; min-height: 0; position: relative; }
 .mframe { position: absolute; inset: 0; overflow: auto; }
 .modframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }

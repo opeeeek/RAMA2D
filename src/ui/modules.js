@@ -59,7 +59,18 @@ function ensureFrame(app) {
 MOD.setState = function (app, st) {
   const f = frames[app]; if (!f || !f.iframe) return;
   if (!f.ready) { f.pending = st; return; }
-  try { APPS[app].set(f.iframe.contentWindow)(JSON.parse(JSON.stringify(st))); } catch (e) { console.error('setState ' + app, e); }
+  try {
+    const w = f.iframe.contentWindow;
+    APPS[app].set(w)(JSON.parse(JSON.stringify(st)));
+    // nazwa elementu w polu modułu (nie wszystkie moduły odświeżają je w setState)
+    const pn = w.document.getElementById('projName'), nm = st.meta && (st.meta.name || st.meta.nazwa);
+    if (pn && nm !== undefined && document.activeElement !== f.iframe) pn.value = nm;
+  } catch (e) { console.error('setState ' + app, e); }
+};
+// ostrzeżenie: schemat belki w module odbiega od statyki ramy (momenty od obciążeń stałych)
+MOD.devText = function (el) {
+  const d = el.res && el.res.dev; if (!d || !(d.rel > 0.15) || !d.at) return '';
+  return `Schemat modułu odbiega od statyki ramy: moment od obciążeń stałych w x = ${fmt(d.at.x, 2)} m – moduł ${fmt(d.at.mod, 1)} kNm, rama ${fmt(d.at.frame, 1)} kNm (różnica ${fmt(d.rel * 100, 0)}% max |M| = ${fmt(d.fmax, 1)} kNm). Element pracuje w układzie ramowym (np. rygiel ramy dwuspadowej, belka w ramie przechyłowej) – sprawdź wymiarowanie na siłach z ramy (zakładka Wyniki) lub zmień rodzaj podpór od prętów dochodzących.`;
 };
 // przesłanie danych elementu do jego modułu (gdy jest w nim otwarty)
 MOD.push = function (el) {
@@ -122,7 +133,8 @@ MOD.refreshBar = function (mk) {
     const sups = el.kind === 'beam' && sch ? sch.sups.map((s, i) => `${String.fromCharCode(65 + i)}: ${s.fixed ? 'utwierdzenie' : s.kr > 0 && (el.opt || {}).rot !== 'pin' ? 'k<sub>φ</sub> = ' + fmt(s.kr, 0) + ' kNm/rad' : 'przegub'}${s.t ? ', t = ' + s.t + ' mm' : ''}`).join('; ') : '';
     info = `<span class="lk" title="Dane sterowane z modelu: schemat (przęsła, podpory), przekrój, materiał, obciążenia. Zmiana przekroju lub materiału w module wraca do modelu.">⇄ powiązany z modelem</span>
       <span class="li"><b>${esc(el.name)}</b> · pręty ${el.bars.join(', ')} · ${esc(schTxt)}</span>
-      ${r && r.eta !== null && r.eta !== undefined ? `<span class="li ${r.eta > 1 || !r.ok ? 'bad' : 'good'}">η = ${fmt(r.eta * 100, 0)}%</span>` : ''}
+      ${r && r.eta !== null && r.eta !== undefined ? `<span class="li ${r.eta > 1 || !r.ok ? 'bad' : 'good'}">η = ${fmt(r.eta * 100, 0)}%</span>` : r && r.note ? `<span class="li bad">${esc(r.note)}</span>` : ''}
+      ${MOD.devText(el) ? `<span class="li devw" title="${esc(MOD.devText(el))}">⚠ schemat ≠ rama (${fmt(el.res.dev.rel * 100, 0)}%)</span>` : ''}
       ${el.kind === 'beam' ? `<label class="li">podpory od prętów dochodzących: <select id="rot-${mk}"><option value="spring" ${(el.opt || {}).rot !== 'pin' && (el.opt || {}).rot !== 'fix' ? 'selected' : ''}>sprężyste (rama zastępcza)</option><option value="pin" ${(el.opt || {}).rot === 'pin' ? 'selected' : ''}>przegubowe</option><option value="fix" ${(el.opt || {}).rot === 'fix' ? 'selected' : ''}>utwierdzone</option></select></label>` : ''}
       <button class="btn sm" id="show-${mk}">Pokaż w modelu</button>
       ${(el.warn && el.warn.length) || el.err ? `<button class="btn sm wbtn" id="warn-${mk}">⚠ ${el.err ? 1 : el.warn.length}</button>` : ''}
@@ -135,6 +147,8 @@ MOD.refreshBar = function (mk) {
   const es = $('#el-' + mk); if (es) es.onchange = () => { c[c.kind] = es.value; MOD.show(mk); };
   const rs = $('#rot-' + mk); if (rs && el) rs.onchange = () => { el.opt = Object.assign({}, el.opt, { rot: rs.value }); RA.change({ now: true }); };
   const sb = $('#show-' + mk); if (sb && el) sb.onclick = () => { RA.sel.bars = new Set(el.bars); RA.sel.nodes.clear(); RA.sel.loads.clear(); RA.selectTab('model'); RA.cv.render(); RA.ui.inspector(); };
-  const wb = $('#warn-' + mk); if (wb && el) wb.onclick = () => { const m = Q.modal(`<h3>${esc(el.name)} – uwagi do przeniesienia danych</h3>${el.err ? `<div class="msg err">${esc(el.err)}</div>` : ''}<ul>${(el.warn || []).map(w => `<li>${esc(w)}</li>`).join('')}</ul><div class="dbtn"><button class="btn pri" data-a="0">Zamknij</button></div>`); m.onclick = e => { if (e.target.closest('[data-a]')) Q.closeModal(); }; };
+  const wmodal = () => { const dv = MOD.devText(el); const m = Q.modal(`<h3>${esc(el.name)} – uwagi do przeniesienia danych</h3>${el.err ? `<div class="msg err">${esc(el.err)}</div>` : ''}${dv ? `<div class="msg wrn">${esc(dv)}</div>` : ''}<ul>${(el.warn || []).map(w => `<li>${esc(w)}</li>`).join('')}</ul><div class="dbtn"><button class="btn pri" data-a="0">Zamknij</button></div>`); m.onclick = e => { if (e.target.closest('[data-a]')) Q.closeModal(); }; };
+  const wb = $('#warn-' + mk); if (wb && el) wb.onclick = wmodal;
+  const dw = $('.devw', bar); if (dw && el) { dw.style.cursor = 'pointer'; dw.onclick = wmodal; }
 };
 })();

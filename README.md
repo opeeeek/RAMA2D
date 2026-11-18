@@ -113,6 +113,11 @@ w `tools/engines.js`, opis w `D.MODS` i funkcję mapowania `MAP.<moduł>_<rodzaj
 - Belki w modułach liczone są w schemacie ramy zastępczej: dla obciążeń poziomych (wiatr) momenty od pracy ramy
   w belkach nie są przenoszone do BelkaŻB i BelkaDR (moduły nie przyjmują momentów skupionych) – program
   ostrzega o pominiętych składnikach na pasku modułu.
+- **Kontrola zgodności schematu:** dla każdej belki momenty od obciążeń stałych liczone silnikiem modułu są
+  porównywane z momentami w ramie; przy różnicy > 15% (np. rygle ram dwuspadowych, belki w ramach przechyłowych,
+  gdzie decyduje praca ramy – rozpór, ugięcie kalenicy) moduł i tabela wymiarowania pokazują ostrzeżenie
+  z wartościami z obu modeli. Drobne różnice (kilka %) wynikają z ustawień modułów: redukcji momentów nad
+  szerokimi podporami (PN-EN 1992-1-1, 5.3.2.2), odkształceń postaciowych w drewnie, ciężaru własnego.
 - Układ szachownicowy obciążeń zmiennych stosują moduły belek; w statyce ramy obciążenie przypadku działa
   w całości (układy szachownicowe można zadać osobnymi przypadkami w jednej grupie wykluczającej).
 

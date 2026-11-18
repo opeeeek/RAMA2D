@@ -926,6 +926,7 @@ table.ltab td:last-child { white-space: nowrap; text-align: right; }
 .modbar .li select { margin-left: 4px; }
 .modbar .wbtn { color: var(--warn); border-color: var(--wrnln); background: var(--warnbg); }
 .modbar .lsup { flex-basis: 100%; color: var(--ink3); font-size: 11.5px; padding-left: 2px; }
+.modbar .devw { color: var(--warn); background: var(--warnbg); border: 1px solid var(--wrnln); padding: 2px 8px; border-radius: 12px; font-size: 12px; }
 .modhost { flex: 1; min-height: 0; position: relative; }
 .mframe { position: absolute; inset: 0; overflow: auto; }
 .modframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
@@ -20426,7 +20427,7 @@ function isSupport(P, R, T, n, excl, dir) {
     if (excl.has(b.id)) return false;
     const o = M().node(P, other(b, n)), g = M().barGeom(P, b), u = [(o.x - N0.x) / g.L, (o.z - N0.z) / g.L];
     const along = Math.abs(u[0] * perp[0] + u[1] * perp[1]);
-    if (along < 0.5) return false;                                    // pręt prawie równoległy do ciągu
+    if (along < 0.2) return false;                                    // pręt prawie równoległy do ciągu
     const below = (u[0] * perp[0] + u[1] * perp[1]) < 0;              // po stronie „spodu”
     if (below) return true;
     // wieszak: pręt powyżej rozciągany od obciążeń stałych
@@ -20601,7 +20602,7 @@ MAP.ZB_beam = function (P, R, el, prev) {
   S.loads.NEd = Math.abs(NEd) > 5 ? r1(NEd) : 0;
   if (Math.abs(NEd) > 5) warn.push(`Siła podłużna z ramy N_Ed = ${r1(NEd)} kN (${NEd > 0 ? 'ściskanie' : 'rozciąganie'}) – przyjęta w module jako stała na długości belki.`);
   if (Math.abs(sch.O.s) > 0.02) warn.push(`Belka nachylona (${r1(sch.O.ang)}°) – BelkaŻB liczy belkę poziomą; obciążenia przyjęto prostopadle do osi.`);
-  return { st: E.normalize(S), warn, sch };
+  return { st: E.normalize(S), warn, sch, flip };
 };
 // siła podłużna SGN (ściskanie dodatnie) o największej wartości bezwzględnej w ciągu
 function axialULS(P, R, el) {
@@ -20831,7 +20832,7 @@ MAP.DR_beam = function (P, R, el, prev) {
   lw.forEach(w => warn.push(`BelkaDR: pominięto ${w}.`));
   S.loads.perm = perm.concat(own('perm')); S.loads.var = vr.concat(own('var')); S.loads.acc = acc.concat(own('acc'));
   S.loads.sw = swAny; S.loads.comb = P.settings.comb; S.loads.gG = +P.settings.gG; S.loads.gGi = +P.settings.gGinf; S.loads.gQ = +P.settings.gQ; S.loads.xi = +P.settings.xi; S.loads.accPsi = P.settings.accPsi;
-  return { st: E.normalize(S), warn, sch };
+  return { st: E.normalize(S), warn, sch, flip };
 };
 
 /* ---------------------------------------------------------------- DREWNO – SłupDrewniany */
@@ -20873,6 +20874,7 @@ D.toModule = function (P, R, el) {
   const fn = MAP[el.mod + '_' + el.kind]; if (!fn) return { err: 'Nieznany moduł.' };
   let out;
   try { out = fn(P, R, el, el.st); } catch (e) { console.error(e); return { err: 'Błąd przenoszenia danych: ' + e.message }; }
+  if (!out.err && el.kind === 'beam') out.frameG = D.frameGMoments(P, R, { sch: out.sch }, !!out.flip);
   return out;
 };
 D.app = el => D.MODS[el.mod][el.kind].app;
@@ -21014,7 +21016,47 @@ D.check = function (el) {
   eta = sumEta !== undefined ? sumEta : Math.max(0, wu);
   if (typeof r.nFail === 'number') fails = r.nFail; else if (typeof r.fails === 'number') fails = r.fails;
   const ok = !errs && !fails && r.ok !== false && eta <= 1 + 1e-9;
-  return { eta, worst: worst ? (worst.name || worst.n || worst.nazwa || worst.opis || worst.id || '') : '', fails, errors: r.errors || [], ok, n: (r.checks || []).length };
+  // niespełnione warunki bez wartości wytężenia (np. brak zbrojenia) – opis zamiast „0%”
+  const failC = (r.checks || []).find(c => c.status === 'fail' && c.info !== true);
+  const note = !ok && !(eta > 0) && failC ? (failC.name || failC.n || '').replace(/\s*–.*$/, '') : '';
+  return { eta: !ok && !(eta > 0) ? null : eta, note, worst: worst ? (worst.name || worst.n || worst.nazwa || worst.opis || worst.id || '') : '', fails, errors: r.errors || [], ok, n: (r.checks || []).length, dev: D.deviation(el, r) };
+};
+
+/* ------------------------------------------------------------ zgodność schematu modułu ze statyką ramy */
+// momenty od obciążeń stałych (G) liczone silnikiem modułu w punktach elementu belkowego [x (m), M (kNm)]
+D.moduleGMoments = function (el, r) {
+  try {
+    if (el.mod === 'ZB') { const st = r.st; if (!st || !st.E || !st.E.G) return null; return { x: st.x.map(v => v / 1000), M: Array.from(st.E.G.My, v => v / 1e6) }; }
+    if (el.mod === 'ST') { const s = r.an && r.md ? r.an.res[r.md.nE - 1] : null; if (!s) return null; const ids = Object.keys(s).filter(k => { const c = r.md.cases.find(q => q.id === k); return c && c.rodzaj === 'G'; }); const M0 = new Float64Array(r.an.xs.length); ids.forEach(k => s[k].tot.M.forEach((v, i) => { M0[i] += v; })); return { x: Array.from(r.an.xs, v => v / 1000), M: Array.from(M0, v => v / 1e6) }; }
+    if (el.mod === 'DR') { const its = (r.st && r.st.items || []).filter(o => o.cls === 'G'); if (!its.length) return null; const M0 = new Float64Array(r.st.stX.length); its.forEach(o => o.units.forEach(u => u.My.forEach((v, i) => { M0[i] += v; }))); return { x: r.st.stX, M: Array.from(M0) }; }
+  } catch (e) { /* */ }
+  return null;
+};
+// największa różnica momentów G (moduł vs rama) odniesiona do max |M| w ramie
+D.deviation = function (el, r) {
+  if (el.kind !== 'beam' || !el.frameG) return null;
+  const mm = D.moduleGMoments(el, r); if (!mm) return null;
+  const F = el.frameG; let fmax = 1e-9, dmax = 0, at = null;
+  F.forEach(p => { fmax = Math.max(fmax, Math.abs(p.M)); });
+  F.forEach(p => { let bi = 0; mm.x.forEach((x, i) => { if (Math.abs(x - p.x) < Math.abs(mm.x[bi] - p.x)) bi = i; }); const d = Math.abs(mm.M[bi] - p.M); if (d > dmax) { dmax = d; at = { x: p.x, frame: p.M, mod: mm.M[bi] }; } });
+  return { rel: dmax / fmax, at, fmax };
+};
+// momenty od obciążeń stałych w ramie wzdłuż elementu (w układzie modułu: x od początku ciągu lub od podpory wspornika)
+D.frameGMoments = function (P, R, el, flip) {
+  const O = el.sch && el.sch.O; if (!O || !R || !R.ok) return null;
+  const G = P.cases.filter(c => c.cat === 'G'); if (!G.length) return null;
+  const out = [];
+  O.seq.forEach((q, k) => {
+    const ei = R.ctx.bIdx.get(q.bar.id); if (ei === undefined) return;
+    const L = O.xs[k + 1] - O.xs[k];
+    [0.1, 0.3, 0.5, 0.7, 0.9].forEach(t => {
+      const xl = t * L; let M0 = 0;
+      G.forEach(c => { const st = R.cases[c.id].bars[ei]; let b = st[0]; st.forEach(s => { if (Math.abs(s.x - xl) < Math.abs(b.x - xl)) b = s; }); M0 += b.M; });
+      const xc = q.rev ? O.xs[k + 1] - xl : O.xs[k] + xl, Mc = (q.rev ? -1 : 1) * M0;
+      out.push({ x: flip ? O.L - xc : xc, M: flip ? Mc : Mc });
+    });
+  });
+  return out;
 };
 
 root.RDES = D;
@@ -22229,9 +22271,10 @@ UI.paneStab = function () {
 UI.paneDes = function () {
   const P = RA.P, R = RA.R, el = $('#p-des');
   const props = D.detect(P);
-  const row = d => { const r = d.res, eta = r && r.eta !== null && r.eta !== undefined ? r.eta : null; const st = d.err ? `<span class="bad">${esc(d.err)}</span>` : !r ? '<span class="hint">obliczanie…</span>' : r.err ? `<span class="bad">${esc(r.err)}</span>` : `<span class="ub"><i style="width:${Math.min(100, (eta || 0) * 100)}%;background:${(eta || 0) > 1 || !r.ok ? 'var(--fail)' : (eta || 0) > 0.9 ? 'var(--warn)' : 'var(--ok)'}"></i></span> <b class="${(eta || 0) > 1 || !r.ok ? 'bad' : 'good'}">${fmt((eta || 0) * 100, 0)}%</b>${r.fails ? ` · niespełnione: ${r.fails}` : ''}${r.errors && r.errors.length ? ` · <span class="bad">${esc(r.errors[0])}</span>` : ''}`;
+  const row = d => { const r = d.res, eta = r && r.eta !== null && r.eta !== undefined ? r.eta : null; const st = d.err ? `<span class="bad">${esc(d.err)}</span>` : !r ? '<span class="hint">obliczanie…</span>' : r.err ? `<span class="bad">${esc(r.err)}</span>` : eta === null ? `<b class="bad">${esc(r.note || 'niespełnione warunki')}</b>${r.fails ? ` · niespełnione: ${r.fails}` : ''} <small class="hint">– uzupełnij dane w module (np. „Dobierz zbrojenie”)</small>` : `<span class="ub"><i style="width:${Math.min(100, (eta || 0) * 100)}%;background:${(eta || 0) > 1 || !r.ok ? 'var(--fail)' : (eta || 0) > 0.9 ? 'var(--warn)' : 'var(--ok)'}"></i></span> <b class="${(eta || 0) > 1 || !r.ok ? 'bad' : 'good'}">${fmt((eta || 0) * 100, 0)}%</b>${r.fails ? ` · niespełnione: ${r.fails}` : ''}${r.errors && r.errors.length ? ` · <span class="bad">${esc(r.errors[0])}</span>` : ''}`;
+    const dv = RA.mod && RA.mod.devText(d);
     const s = M.sec(P, (M.bar(P, d.bars[0]) || {}).sec);
-    return `<tr><td><b>${esc(d.name)}</b></td><td>${esc(D.MODS[d.mod][d.kind].n)}</td><td>${d.bars.join(', ')}</td><td>${esc(SEC.fullLabel(s))}</td><td>${d.sch && d.sch.spans ? `${d.sch.spans.length} przęsł.${d.sch.cantL ? ' + wsp. L' : ''}${d.sch.cantR ? ' + wsp. P' : ''}` : d.sch && d.sch.L ? `L = ${f2(d.sch.L)} m` : ''}</td><td>${st}${r && r.worst ? `<br><small class="hint">${esc(r.worst)}</small>` : ''}</td><td><button class="btn sm pri" data-open="${d.id}">Otwórz w module</button> <button class="lnk dng" data-dx="${d.id}">usuń</button></td></tr>`; };
+    return `<tr><td><b>${esc(d.name)}</b></td><td>${esc(D.MODS[d.mod][d.kind].n)}</td><td>${d.bars.join(', ')}</td><td>${esc(SEC.fullLabel(s))}</td><td>${d.sch && d.sch.spans ? `${d.sch.spans.length} przęsł.${d.sch.cantL ? ' + wsp. L' : ''}${d.sch.cantR ? ' + wsp. P' : ''}` : d.sch && d.sch.L ? `L = ${f2(d.sch.L)} m` : ''}</td><td>${st}${r && r.worst ? `<br><small class="hint">${esc(r.worst)}</small>` : ''}${dv ? `<br><small class="warnc" title="${esc(dv)}">⚠ schemat modułu odbiega od ramy (M<sub>G</sub> różni się o ${fmt(d.res.dev.rel * 100, 0)}%) – najedź, aby zobaczyć szczegóły</small>` : ''}</td><td><button class="btn sm pri" data-open="${d.id}">Otwórz w module</button> <button class="lnk dng" data-dx="${d.id}">usuń</button></td></tr>`; };
   el.innerHTML = `<div class="box"><h4>Elementy wymiarowane (${P.design.length})</h4>
     ${P.design.length ? `<table class="ctab"><thead><tr><th>Element</th><th>Moduł</th><th>Pręty</th><th>Przekrój</th><th>Schemat</th><th>Wytężenie (silnik modułu)</th><th></th></tr></thead><tbody>${P.design.map(row).join('')}</tbody></table>` : '<p class="hint">Brak elementów. Dodaj je z listy poniżej albo prawym klikiem na pręcie („Wymiaruj w module…”).</p>'}
     <p class="hint">Wytężenie liczone jest silnikiem modułu (BelkaŻB, SłupŻB, BelkaStal, SłupStal, BelkaDR, SłupDrewniany) na bieżących danych – także bez otwierania modułu. Zmiana modelu (geometria, obciążenia, przekroje) przelicza elementy automatycznie; zmiana przekroju lub materiału w module wraca do modelu.</p></div>
@@ -22362,7 +22405,18 @@ function ensureFrame(app) {
 MOD.setState = function (app, st) {
   const f = frames[app]; if (!f || !f.iframe) return;
   if (!f.ready) { f.pending = st; return; }
-  try { APPS[app].set(f.iframe.contentWindow)(JSON.parse(JSON.stringify(st))); } catch (e) { console.error('setState ' + app, e); }
+  try {
+    const w = f.iframe.contentWindow;
+    APPS[app].set(w)(JSON.parse(JSON.stringify(st)));
+    // nazwa elementu w polu modułu (nie wszystkie moduły odświeżają je w setState)
+    const pn = w.document.getElementById('projName'), nm = st.meta && (st.meta.name || st.meta.nazwa);
+    if (pn && nm !== undefined && document.activeElement !== f.iframe) pn.value = nm;
+  } catch (e) { console.error('setState ' + app, e); }
+};
+// ostrzeżenie: schemat belki w module odbiega od statyki ramy (momenty od obciążeń stałych)
+MOD.devText = function (el) {
+  const d = el.res && el.res.dev; if (!d || !(d.rel > 0.15) || !d.at) return '';
+  return `Schemat modułu odbiega od statyki ramy: moment od obciążeń stałych w x = ${fmt(d.at.x, 2)} m – moduł ${fmt(d.at.mod, 1)} kNm, rama ${fmt(d.at.frame, 1)} kNm (różnica ${fmt(d.rel * 100, 0)}% max |M| = ${fmt(d.fmax, 1)} kNm). Element pracuje w układzie ramowym (np. rygiel ramy dwuspadowej, belka w ramie przechyłowej) – sprawdź wymiarowanie na siłach z ramy (zakładka Wyniki) lub zmień rodzaj podpór od prętów dochodzących.`;
 };
 // przesłanie danych elementu do jego modułu (gdy jest w nim otwarty)
 MOD.push = function (el) {
@@ -22425,7 +22479,8 @@ MOD.refreshBar = function (mk) {
     const sups = el.kind === 'beam' && sch ? sch.sups.map((s, i) => `${String.fromCharCode(65 + i)}: ${s.fixed ? 'utwierdzenie' : s.kr > 0 && (el.opt || {}).rot !== 'pin' ? 'k<sub>φ</sub> = ' + fmt(s.kr, 0) + ' kNm/rad' : 'przegub'}${s.t ? ', t = ' + s.t + ' mm' : ''}`).join('; ') : '';
     info = `<span class="lk" title="Dane sterowane z modelu: schemat (przęsła, podpory), przekrój, materiał, obciążenia. Zmiana przekroju lub materiału w module wraca do modelu.">⇄ powiązany z modelem</span>
       <span class="li"><b>${esc(el.name)}</b> · pręty ${el.bars.join(', ')} · ${esc(schTxt)}</span>
-      ${r && r.eta !== null && r.eta !== undefined ? `<span class="li ${r.eta > 1 || !r.ok ? 'bad' : 'good'}">η = ${fmt(r.eta * 100, 0)}%</span>` : ''}
+      ${r && r.eta !== null && r.eta !== undefined ? `<span class="li ${r.eta > 1 || !r.ok ? 'bad' : 'good'}">η = ${fmt(r.eta * 100, 0)}%</span>` : r && r.note ? `<span class="li bad">${esc(r.note)}</span>` : ''}
+      ${MOD.devText(el) ? `<span class="li devw" title="${esc(MOD.devText(el))}">⚠ schemat ≠ rama (${fmt(el.res.dev.rel * 100, 0)}%)</span>` : ''}
       ${el.kind === 'beam' ? `<label class="li">podpory od prętów dochodzących: <select id="rot-${mk}"><option value="spring" ${(el.opt || {}).rot !== 'pin' && (el.opt || {}).rot !== 'fix' ? 'selected' : ''}>sprężyste (rama zastępcza)</option><option value="pin" ${(el.opt || {}).rot === 'pin' ? 'selected' : ''}>przegubowe</option><option value="fix" ${(el.opt || {}).rot === 'fix' ? 'selected' : ''}>utwierdzone</option></select></label>` : ''}
       <button class="btn sm" id="show-${mk}">Pokaż w modelu</button>
       ${(el.warn && el.warn.length) || el.err ? `<button class="btn sm wbtn" id="warn-${mk}">⚠ ${el.err ? 1 : el.warn.length}</button>` : ''}
@@ -22438,7 +22493,9 @@ MOD.refreshBar = function (mk) {
   const es = $('#el-' + mk); if (es) es.onchange = () => { c[c.kind] = es.value; MOD.show(mk); };
   const rs = $('#rot-' + mk); if (rs && el) rs.onchange = () => { el.opt = Object.assign({}, el.opt, { rot: rs.value }); RA.change({ now: true }); };
   const sb = $('#show-' + mk); if (sb && el) sb.onclick = () => { RA.sel.bars = new Set(el.bars); RA.sel.nodes.clear(); RA.sel.loads.clear(); RA.selectTab('model'); RA.cv.render(); RA.ui.inspector(); };
-  const wb = $('#warn-' + mk); if (wb && el) wb.onclick = () => { const m = Q.modal(`<h3>${esc(el.name)} – uwagi do przeniesienia danych</h3>${el.err ? `<div class="msg err">${esc(el.err)}</div>` : ''}<ul>${(el.warn || []).map(w => `<li>${esc(w)}</li>`).join('')}</ul><div class="dbtn"><button class="btn pri" data-a="0">Zamknij</button></div>`); m.onclick = e => { if (e.target.closest('[data-a]')) Q.closeModal(); }; };
+  const wmodal = () => { const dv = MOD.devText(el); const m = Q.modal(`<h3>${esc(el.name)} – uwagi do przeniesienia danych</h3>${el.err ? `<div class="msg err">${esc(el.err)}</div>` : ''}${dv ? `<div class="msg wrn">${esc(dv)}</div>` : ''}<ul>${(el.warn || []).map(w => `<li>${esc(w)}</li>`).join('')}</ul><div class="dbtn"><button class="btn pri" data-a="0">Zamknij</button></div>`); m.onclick = e => { if (e.target.closest('[data-a]')) Q.closeModal(); }; };
+  const wb = $('#warn-' + mk); if (wb && el) wb.onclick = wmodal;
+  const dw = $('.devw', bar); if (dw && el) { dw.style.cursor = 'pointer'; dw.onclick = wmodal; }
 };
 })();
 
@@ -22525,7 +22582,7 @@ RA.syncDesign = function (o) {
     if (!el.bars.length) return;
     const out = D.toModule(P, R, el);
     if (out.err) { el.err = out.err; el.warn = []; return; }
-    el.err = null; el.warn = out.warn; el.sch = out.sch;
+    el.err = null; el.warn = out.warn; el.sch = out.sch; el.frameG = out.frameG || null;
     const js = JSON.stringify(out.st);
     if (js !== el.stJson) { el.st = out.st; el.stJson = js; el.res = null; if (RA.mod) RA.mod.push(el); }
   });
