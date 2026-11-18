@@ -18,7 +18,8 @@ Q.fmt = (v, dp) => {
 Q.fmtS = (v, dp) => { const s = Q.fmt(v, dp); return v > 0 ? '+' + s : s; };
 Q.num = s => { if (typeof s === 'number') return s; const x = parseFloat(String(s === undefined || s === null ? '' : s).replace(/\s/g, '').replace('−', '-').replace(',', '.')); return isFinite(x) ? x : null; };
 Q.show = v => (v === '' || v === null || v === undefined) ? '' : String(Math.round(v * 1e6) / 1e6).replace('.', ',');
-Q.sym = s => Q.esc(s).replace(/_\{([^}]*)\}/g, '<sub>$1</sub>').replace(/\^\{([^}]*)\}/g, '<sup>$1</sup>');
+// etykiety: wewnętrzne napisy programu mogą zawierać znaczniki <sub>, <sup>, <b> – przepuszczane; pozostałe znaki escapowane
+Q.sym = s => { s = String(s === undefined || s === null ? '' : s); if (/<(sub|sup|b|i)>/.test(s)) return s; return Q.esc(s).replace(/_\{([^}]*)\}/g, '<sub>$1</sub>').replace(/\^\{([^}]*)\}/g, '<sup>$1</sup>'); };
 Q.clone = o => JSON.parse(JSON.stringify(o));
 Q.uid = (() => { let i = 0; return p => (p || 'u') + (++i); })();
 
@@ -38,7 +39,7 @@ Q.ask = (msg, ok, danger) => new Promise(res => {
 });
 // menu kontekstowe: items – [{label, fn, dis, sep}]
 Q.menu = (x, y, items) => {
-  Q.closeMenu();
+  Q.closeMenu(); Q._menuT = Date.now();
   const el = document.createElement('div'); el.className = 'ctxmenu';
   items.forEach(it => {
     if (it.sep) { el.appendChild(document.createElement('hr')); return; }
@@ -51,7 +52,8 @@ Q.menu = (x, y, items) => {
   setTimeout(() => { const f = Q.$('button:not(:disabled)', el); if (f) f.focus(); }, 0);
 };
 Q.closeMenu = () => Q.$$('.ctxmenu').forEach(e => e.remove());
-document.addEventListener('mousedown', e => { if (!e.target.closest('.ctxmenu')) Q.closeMenu(); });
+// zamykanie menu kliknięciem obok (z pominięciem zdarzenia, które je otworzyło – pointerdown → mousedown)
+document.addEventListener('mousedown', e => { if (Date.now() - (Q._menuT || 0) < 80) return; if (!e.target.closest('.ctxmenu')) Q.closeMenu(); });
 
 // pola formularza (jak w modułach): wiersz z etykietą
 Q.rowNum = (label, key, val, unit, o) => { o = o || {}; return `<div class="row"><label>${Q.sym(label)}</label><div class="combo"><input data-f="${key}" value="${Q.esc(Q.show(val))}" ${o.ph ? `placeholder="${Q.esc(o.ph)}"` : ''} ${o.ro ? 'readonly' : ''} spellcheck="false" autocomplete="off"></div><span class="unit">${Q.sym(unit || '')}</span></div>`; };

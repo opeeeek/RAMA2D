@@ -234,6 +234,7 @@ RA.init = function () {
   RA.updateTitle();
   RA.cv.fit();
   RA.change({ noUndo: true, noDirty: true, now: true });
+  if (window.__hostOpenFile) { const f = window.__hostOpenFile; window.__hostOpenFile = null; setTimeout(() => RA.load(f.content, f.path), 50); return; }
   if (!RA.P.bars.length) setTimeout(() => RA.ui.generator(true), 200);
 };
 RA.act = function (a) {

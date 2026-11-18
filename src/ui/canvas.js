@@ -23,7 +23,7 @@ CV.tool = () => tool;
 /* ------------------------------------------------------------ inicjalizacja */
 CV.init = function () {
   const wrap = $('#cvwrap');
-  wrap.innerHTML = '<svg id="cv" xmlns="http://www.w3.org/2000/svg"></svg>';
+  wrap.innerHTML = '<svg id="cv" class="cvsvg" xmlns="http://www.w3.org/2000/svg"></svg>';
   svg = $('#cv');
   $('#mtools').innerHTML = CV.TOOLS.map(([k, t, ic]) => `<button data-tool="${k}" title="${esc(t)}" class="${k === tool ? 'on' : ''}">${Q.icon(ic, 20)}</button>`).join('') +
     `<span class="msep"></span><button data-mact="gen" title="Generator układów">${Q.icon('gen', 20)}</button><button data-mact="sec" title="Przekroje i materiały">${Q.icon('sec', 20)}</button><button data-mact="tables" title="Tabele węzłów i prętów">${Q.icon('table', 20)}</button>` +
@@ -332,6 +332,26 @@ CV.status = function () {
   const T = { select: 'Zaznaczanie: klik – element, Shift – dodaj, przeciągnij – ramka / przesuń węzeł; prawy klik – menu; kółko – zoom; środkowy/prawy przycisk – przesuwanie widoku', bar: drawFrom ? 'Rysowanie: kliknij kolejny punkt (lub wpisz współrzędne niżej); Esc / prawy klik – koniec' : 'Rysowanie prętów: kliknij punkt początkowy (węzeł, punkt na pręcie lub siatki)', node: 'Kliknij pręt, aby wstawić węzeł (podział pręta)', support: 'Kliknij węzeł, aby wybrać rodzaj podpory', load: `Kliknij pręt lub węzeł – obciążenie w przypadku ${RA.activeCase || '—'}`, hinge: 'Kliknij pręt przy węźle – przegub na tym końcu pręta (ponownie – usuń)', del: 'Kliknij węzeł lub pręt, aby go usunąć' };
   const c = snapPt && mouse ? `x = ${f2(snapPt.x)}  z = ${f2(snapPt.z)}${snapPt.kind ? '  · ' + snapPt.kind : ''}` : (mouse ? `x = ${f2(wx(mouse.sx))}  z = ${f2(wz(mouse.sy))}` : '');
   el.innerHTML = `<span class="mcoord">${esc(c)}</span><span>${esc(T[tool] || '')}</span>`;
+};
+
+// migawka rysunku (SVG jako tekst) w zadanym trybie – do raportu; widok użytkownika zostaje przywrócony
+CV.snapshot = function (mode, src, o) {
+  o = o || {};
+  if (!svg) return '';
+  const keep = Object.assign({}, RA.view), keepV = Object.assign({}, V), keepSel = RA.sel, keepCase = RA.activeCase;
+  const keepW = W, keepH = H;
+  W = o.w || 1000; H = o.h || 560;
+  RA.view.mode = mode; RA.view.src = src || RA.view.src; RA.view.grid = false; RA.view.labels = o.labels !== false; RA.view.scaleK = 1; RA.view.loads = o.loads !== false;
+  RA.sel = { nodes: new Set(), bars: new Set(), loads: new Set() };
+  if (o.case) RA.activeCase = o.case;
+  const b = M.bounds(RA.P), dx = Math.max(1, b.x1 - b.x0), dz = Math.max(1, b.z1 - b.z0);
+  V.k = Math.min((W - 180) / dx, (H - 170) / dz, 400); V.cx = (b.x0 + b.x1) / 2; V.cz = (b.z0 + b.z1) / 2;
+  hoverId = null;
+  CV.render();
+  const out = `<svg class="cvsvg" xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg.innerHTML.replace(/<g id="over"><\/g>/, '')}</svg>`;
+  Object.assign(RA.view, keep); Object.assign(V, keepV); RA.sel = keepSel; RA.activeCase = keepCase; W = keepW; H = keepH;
+  CV.render();
+  return out;
 };
 
 /* ------------------------------------------------------------ obciążenia na rysunku */

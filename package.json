@@ -1,0 +1,13 @@
+{
+  "name": "rama2d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RAMA2D – modelowanie i statyka płaskich układów prętowych z wymiarowaniem wg Eurokodów (moduły Żelbet, Stal, Drewno)",
+  "scripts": {
+    "extract": "node tools/extract-modules.js",
+    "build": "node tools/build.js",
+    "exe": "bash host/build.sh",
+    "test": "node tests/fem.test.js && node tests/model.test.js && node tests/generator.test.js && node tests/design.test.js"
+  },
+  "license": "UNLICENSED"
+}
