@@ -118,7 +118,10 @@ w `tools/engines.js`, opis w `D.MODS` i funkcję mapowania `MAP.<moduł>_<rodzaj
   gdzie decyduje praca ramy – rozpór, ugięcie kalenicy) moduł i tabela wymiarowania pokazują ostrzeżenie
   z wartościami z obu modeli. Drobne różnice (kilka %) wynikają z ustawień modułów: redukcji momentów nad
   szerokimi podporami (PN-EN 1992-1-1, 5.3.2.2), odkształceń postaciowych w drewnie, ciężaru własnego.
-- Układ szachownicowy obciążeń zmiennych stosują moduły belek; w statyce ramy obciążenie przypadku działa
-  w całości (układy szachownicowe można zadać osobnymi przypadkami w jednej grupie wykluczającej).
+- Układ szachownicowy obciążeń zmiennych (domyślnie dla obciążeń użytkowych, przełącznik w przypadku):
+  w obwiedniach statyki ramy każdy obciążony pręt przypadku działa osobno, tylko tam, gdzie niekorzystnie.
+  Analiza II rzędu kombinacji decydujących i siły przekazywane do modułów słupów dotyczą przypadku w całości
+  (układy szachownicowe dla słupów można zadać osobnymi przypadkami w jednej grupie wykluczającej);
+  moduły belek stosują własny układ szachownicowy.
 
 Program jest narzędziem pomocniczym. Wyniki wymagają weryfikacji przez osobę z odpowiednimi uprawnieniami budowlanymi.

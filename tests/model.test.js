@@ -42,4 +42,20 @@ console.log('P-Δ: kombinacji', Object.keys(R2.p2).length, 'M_podst. słupa I/II
 // podział pręta
 const P3 = M.normalize(PN); const sp = M.splitBar(P3, 2, 0.25); const R3 = M.analyze(P3);
 ok('podział rygla nie zmienia reakcji', R3.cases.G1.reac[0][1], 60);
+// układ szachownicowy: belka trójprzęsłowa 3 × 6 m, Q = 10 kN/m – max M przęsła środkowego (tylko przęsło 2 obciążone):
+// M = qL²/8 − qL²·(1/10)… porównanie: wynik z przypadkiem obciążającym wyłącznie przęsło 2
+{
+  const P2 = M.newProject(); P2.sections.push(Object.assign(SEC.make('S', { prof: { typ: 'walc', seria: 'IPE', nr: 300 } }), { id: 's1' }));
+  const ns = [0, 6, 12, 18].map(x => M.addNode(P2, x, 0).id); for (let i = 0; i < 3; i++) M.addBar(P2, ns[i], ns[i + 1], 's1');
+  M.setSupport(P2, ns[0], 'pin'); [1, 2, 3].forEach(i => M.setSupport(P2, ns[i], 'rollX'));
+  // Q9 – przypadek referencyjny w tej samej grupie wykluczającej (nie sumuje się z Q1)
+  P2.cases = [{ id: 'G1', name: 'g', cat: 'G', sw: false }, { id: 'Q1', name: 'q', cat: 'Q', qcat: 'B', pattern: true, grp: 'X' }, { id: 'Q9', name: 'tylko przęsło 2', cat: 'Q', qcat: 'B', pattern: false, grp: 'X' }];
+  [1, 2, 3].forEach(b => P2.loads.push({ id: P2.seq.load++, case: 'Q1', kind: 'dist', bar: b, dir: 'Z', q1: 10, x1: 0, x2: 1 }));
+  P2.loads.push({ id: P2.seq.load++, case: 'Q9', kind: 'dist', bar: 2, dir: 'Z', q1: 10, x1: 0, x2: 1 });
+  const PN2 = M.normalize(P2), R2 = M.analyze(PN2);
+  const e = R2.env.CHAR.bars[1], im = e.x.findIndex(x => Math.abs(x - 3) < 1e-6);
+  const onlyMid = R2.cases.Q9.bars[1][im].M, full = R2.cases.Q1.bars[1][im].M;
+  ok('szachownica: max M przęsła środkowego = obciążenie tylko tego przęsła', e.Mmax[im], onlyMid);
+  console.log(`  (obciążenie wszystkich przęseł: ${full.toFixed(2)} kNm, szachownica: ${e.Mmax[im].toFixed(2)} kNm)`);
+}
 console.log(`\n${n - fails}/${n} testów zaliczonych`); process.exit(fails ? 1 : 0);

@@ -314,7 +314,8 @@ UI.caseDialog = function (c0) {
       ${c.cat === 'E' ? Q.rowNum('ψ<sub>0</sub>', 'p0', c.p0, '') + Q.rowNum('ψ<sub>1</sub>', 'p1', c.p1, '') + Q.rowNum('ψ<sub>2</sub>', 'p2', c.p2, '') : ''}
       ${!['G', 'A'].includes(c.cat) ? Q.rowTxt('Grupa wykluczająca', 'grp', c.grp, 'np. W (wiatr), S (śnieg)') : ''}
       ${Q.rowSel('Klasa trwania (drewno)', 'dur', c.dur, [['', 'automatycznie'], ['P', 'stałe'], ['L', 'długotrwałe'], ['M', 'średniotrwałe'], ['S', 'krótkotrwałe'], ['I', 'chwilowe']], { wide: true })}
-      ${c.cat === 'G' ? Q.chk('ciężar własny prętów (automatycznie z przekrojów)', 'sw', c.sw) : ''}</div>
+      ${c.cat === 'G' ? Q.chk('ciężar własny prętów (automatycznie z przekrojów)', 'sw', c.sw) : ''}
+      ${!['G', 'A'].includes(c.cat) ? Q.chk('układ szachownicowy – obciążenie każdego pręta osobno, tylko tam, gdzie niekorzystne', 'pattern', c.pattern === undefined ? c.cat === 'Q' : c.pattern) : ''}</div>
       <p class="hint">ψ wg PN-EN 1990 tabl. A1.1 (ZK). Przypadki z tą samą <b>grupą wykluczającą</b> nie działają jednocześnie (np. wiatr z lewej / z prawej, warianty śniegu) – także w modułach.</p>
       <div class="dbtn">${edit ? '<button class="btn dng" data-a="del">Usuń przypadek</button><span style="flex:1"></span>' : ''}<button class="btn" data-a="0">Anuluj</button><button class="btn pri" data-a="1">${edit ? 'Zastosuj' : 'Dodaj'}</button></div>`, 'sm');
     const cs = $('[data-f="cat"]', m); cs.onchange = () => { Object.assign(c, Q.readFields(m)); draw(); };

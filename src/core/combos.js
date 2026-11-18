@@ -76,10 +76,12 @@ C.envelope = function (cases, vals, s, typ) {
   const gTag = sign => (unf(sign) ? 'sup' : 'inf');
   const fams = families(vars);
   [1, -1].forEach(sign => {
-    const pick = v => (sign > 0 ? Math.max(0, v) : Math.min(0, v));
+    const pick0 = v => (sign > 0 ? Math.max(0, v) : Math.min(0, v));
+    // wartość oddziaływania zmiennego ze współczynnikiem f: liczba albo układ szachownicowy {p, n} – sumy części niekorzystnych
+    const pick = (v, f) => { if (v && typeof v === 'object') { const a = f >= 0 ? (sign > 0 ? v.p : v.n) : (sign > 0 ? v.n : v.p); return a * f; } return pick0((v || 0) * f); };
     fams.forEach(F => {
       const grps = groupsOf(F.set);
-      const acc = (fac, excl) => { let t = 0; const ids = []; grps.forEach(gr => { if (excl && gr.includes(excl)) return; let bv = 0, bid = null; gr.forEach(v => { const x = pick((vals[v.id] || 0) * fac(v)); if (Math.abs(x) > Math.abs(bv)) { bv = x; bid = v.id; } }); t += bv; if (bid) ids.push(bid); }); return { t, ids }; };
+      const acc = (fac, excl) => { let t = 0; const ids = []; grps.forEach(gr => { if (excl && gr.includes(excl)) return; let bv = 0, bid = null; gr.forEach(v => { const x = pick(vals[v.id], fac(v)); if (Math.abs(x) > Math.abs(bv)) { bv = x; bid = v.id; } }); t += bv; if (bid) ids.push(bid); }); return { t, ids }; };
       if (typ === 'ULS') {
         const xi = s.comb === '610' ? 1 : s.xi;
         if (s.comb === '610ab') {   // 6.10a: G·γ + ψ₀·γ_Q·ΣQ
@@ -88,14 +90,14 @@ C.envelope = function (cases, vals, s, typ) {
         }
         consider(gPart(sign, xi), { ref: s.comb === '610' ? '6.10' : '6.10b', lead: null, q: [], g: gTag(sign) });
         F.set.forEach(L => {
-          const vL = pick((vals[L.id] || 0) * gQ); if (!vL) return;
+          const vL = pick(vals[L.id], gQ); if (!vL) return;
           const a = acc(v => gQ * C.psi(v)[0], L), tot = gPart(sign, xi) + vL + a.t;
           consider(tot, { ref: s.comb === '610' ? '6.10' : '6.10b', lead: L.id, q: a.ids, g: gTag(sign) });
         });
       } else if (typ === 'CHAR' || typ === 'FREQ') {
         consider(G, { ref: typ === 'CHAR' ? '6.14b' : '6.15b', lead: null, q: [] });
         F.set.forEach(L => {
-          const fL = typ === 'CHAR' ? 1 : C.psi(L)[1], vL = pick((vals[L.id] || 0) * fL); if (!vL) return;
+          const fL = typ === 'CHAR' ? 1 : C.psi(L)[1], vL = pick(vals[L.id], fL); if (!vL) return;
           const a = acc(v => (typ === 'CHAR' ? C.psi(v)[0] : C.psi(v)[2]), L);
           consider(G + vL + a.t, { ref: typ === 'CHAR' ? '6.14b' : '6.15b', lead: L.id, q: a.ids });
         });
@@ -106,7 +108,7 @@ C.envelope = function (cases, vals, s, typ) {
         accs.forEach(Ak => {
           const base = G + (vals[Ak.id] || 0);
           const a0 = acc(v => C.psi(v)[2]); consider(base + a0.t, { ref: '6.11b', acc: Ak.id, lead: null, q: a0.ids });
-          F.set.forEach(L => { const vL = pick((vals[L.id] || 0) * C.psi(L)[pl]); if (!vL) return; const a = acc(v => C.psi(v)[2], L); consider(base + vL + a.t, { ref: '6.11b', acc: Ak.id, lead: L.id, q: a.ids }); });
+          F.set.forEach(L => { const vL = pick(vals[L.id], C.psi(L)[pl]); if (!vL) return; const a = acc(v => C.psi(v)[2], L); consider(base + vL + a.t, { ref: '6.11b', acc: Ak.id, lead: L.id, q: a.ids }); });
         });
       }
     });

@@ -62,7 +62,7 @@ M.normalize = function (P0) {
   P.supports = P.supports.map(s => ({ node: +s.node, ux: s.ux ? 1 : 0, uz: s.uz ? 1 : 0, ry: s.ry ? 1 : 0, kx: Math.max(0, num(s.kx, 0)), kz: Math.max(0, num(s.kz, 0)), kr: Math.max(0, num(s.kr, 0)), ang: num(s.ang, 0) }));
   P.sections = P.sections.map(s => Object.assign({ id: s.id, name: s.name || '', kEI: num(s.kEI, 1) }, s));
   if (!P.cases.length) P.cases = M.newProject().cases;
-  P.cases = P.cases.map(c => ({ id: String(c.id), name: c.name || '', cat: CMB().CATS[c.cat] ? c.cat : 'G', qcat: c.qcat || 'B', alt: c.alt === 'high' ? 'high' : 'low', grp: c.grp || '', sw: !!c.sw, dur: c.dur || '', p0: num(c.p0, 0.7), p1: num(c.p1, 0.5), p2: num(c.p2, 0.3) }));
+  P.cases = P.cases.map(c => ({ id: String(c.id), name: c.name || '', cat: CMB().CATS[c.cat] ? c.cat : 'G', qcat: c.qcat || 'B', alt: c.alt === 'high' ? 'high' : 'low', grp: c.grp || '', sw: !!c.sw, dur: c.dur || '', p0: num(c.p0, 0.7), p1: num(c.p1, 0.5), p2: num(c.p2, 0.3), pattern: c.pattern === undefined ? c.cat === 'Q' : !!c.pattern }));
   P.loads = P.loads.map(l => Object.assign({}, l, { id: +l.id || 0 }));
   const mx = (arr, f) => arr.reduce((a, o) => Math.max(a, +f(o) || 0), 0);
   P.seq = Object.assign({ node: 1, bar: 1, sec: 1, load: 1, des: 1 }, P.seq || {});
@@ -204,6 +204,12 @@ M.analyze = function (P, opt) {
     const bars = ctx.bars.map((b, ei) => FEM().memberResults(A, res, ei, R.xs[ei]));
     const reac = FEM().reactions(A, res);
     R.cases[lc.id] = { res, bars, reac, disp: ctx.nodes.map((n, i) => FEM().nodeDisp(A, res, i)), fem: L };
+    // układ szachownicowy (oddziaływania zmienne): obciążenie każdego pręta osobno – w obwiedni tylko części niekorzystne
+    if (lc.pattern && CMB().isVar(lc) && L.el.length > 1) {
+      const parts = L.el.map(g => ({ nodal: [], el: [g], settle: [] }));
+      if (L.nodal.length || L.settle.length) parts.push({ nodal: L.nodal, el: [], settle: L.settle });
+      R.cases[lc.id].parts = parts.map(pl => { const r = FEM().solveCase(A, pl); return { bars: ctx.bars.map((b, ei) => FEM().memberResults(A, r, ei, R.xs[ei])), reac: FEM().reactions(A, r), disp: ctx.nodes.map((n, i) => FEM().nodeDisp(A, r, i)) }; });
+    }
   });
   // kombinacje
   const s = P.settings;
@@ -262,14 +268,20 @@ M.envelope = function (P, R, typ) {
   R.ctx.bars.forEach((b, ei) => {
     const n = R.cases[cases[0].id].bars[ei].length, o = {};
     KEYS.forEach(k => { o[k + 'max'] = new Float64Array(n); o[k + 'min'] = new Float64Array(n); o[k + 'maxC'] = []; o[k + 'minC'] = []; });
-    for (let i = 0; i < n; i++) KEYS.forEach(k => { const vals = {}; cases.forEach(c => { vals[c.id] = R.cases[c.id].bars[ei][i][k]; }); const e = E(cases, vals, s, typ); o[k + 'max'][i] = e.max; o[k + 'min'][i] = e.min; o[k + 'maxC'][i] = e.maxC; o[k + 'minC'][i] = e.minC; });
+    for (let i = 0; i < n; i++) KEYS.forEach(k => { const vals = {}; cases.forEach(c => { vals[c.id] = pv(R.cases[c.id], q => q.bars[ei][i][k]); }); const e = E(cases, vals, s, typ); o[k + 'max'][i] = e.max; o[k + 'min'][i] = e.min; o[k + 'maxC'][i] = e.maxC; o[k + 'minC'][i] = e.minC; });
     o.x = R.cases[cases[0].id].bars[ei].map(q => q.x);
     out.bars.push(o);
   });
-  Object.keys(R.cases[cases[0].id].reac).forEach(nd => { out.reac[nd] = [0, 1, 2].map(k => { const vals = {}; cases.forEach(c => { vals[c.id] = R.cases[c.id].reac[nd][k]; }); return E(cases, vals, s, typ); }); });
-  R.ctx.nodes.forEach((nn, i) => { out.disp.push([0, 1, 2].map(k => { const vals = {}; cases.forEach(c => { vals[c.id] = R.cases[c.id].disp[i][k]; }); return E(cases, vals, s, typ); })); });
+  Object.keys(R.cases[cases[0].id].reac).forEach(nd => { out.reac[nd] = [0, 1, 2].map(k => { const vals = {}; cases.forEach(c => { vals[c.id] = pv(R.cases[c.id], q => q.reac[nd][k]); }); return E(cases, vals, s, typ); }); });
+  R.ctx.nodes.forEach((nn, i) => { out.disp.push([0, 1, 2].map(k => { const vals = {}; cases.forEach(c => { vals[c.id] = pv(R.cases[c.id], q => q.disp[i][k]); }); return E(cases, vals, s, typ); })); });
   return out;
 };
+// wartość przypadku w obwiedni: liczba albo – dla układu szachownicowego – sumy części dodatnich i ujemnych
+function pv(cr, get) {
+  if (!cr.parts) return get(cr);
+  let p = 0, n = 0; cr.parts.forEach(q => { const v = get(q); if (v > 0) p += v; else n += v; });
+  return { p, n };
+}
 // obwiednia z jawnych kombinacji (analiza II rzędu)
 M.envelopeExplicit = function (P, R, list) {
   const out = { typ: 'ULS', bars: [], reac: {}, disp: [], explicit: true };
