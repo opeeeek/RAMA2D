@@ -60,10 +60,11 @@ const Tv = (T, v) => { const n = T.length, r = zeros(n); for (let i = 0; i < n; 
 
 /* ------------------------------------------------- macierze elementu (lokalne) */
 // kolejność DOF lokalnych: [u1, v1, φ1, u2, v2, φ2] w układzie prawoskrętnym (x̄, ȳ = obrót x̄ o +90°), φ – przeciwnie do wskazówek
-function kLocal(EA, EI, L) {
-  const k = mat(6, 6), a = EA / L, b = EI / (L * L * L);
+// GA – sztywność na ścinanie (κ·G·A); 0 / brak – belka Eulera–Bernoulliego, > 0 – belka Timoshenki (Φ = 12EI/(GA·L²))
+function kLocal(EA, EI, L, GA) {
+  const k = mat(6, 6), a = EA / L, ph = GA > 0 ? 12 * EI / (GA * L * L) : 0, b = EI / (L * L * L * (1 + ph));
   k[0][0] = a; k[0][3] = -a; k[3][0] = -a; k[3][3] = a;
-  const B = [[12, 6 * L, -12, 6 * L], [6 * L, 4 * L * L, -6 * L, 2 * L * L], [-12, -6 * L, 12, -6 * L], [6 * L, 2 * L * L, -6 * L, 4 * L * L]];
+  const B = [[12, 6 * L, -12, 6 * L], [6 * L, (4 + ph) * L * L, -6 * L, (2 - ph) * L * L], [-12, -6 * L, 12, -6 * L], [6 * L, (2 - ph) * L * L, -6 * L, (4 + ph) * L * L]];
   const id = [1, 2, 4, 5];
   for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) k[id[i]][id[j]] = b * B[i][j];
   return k;
@@ -113,7 +114,7 @@ function feq(loads, L, EA, EI) {
 }
 
 /* ------------------------------------------------------------ model analizy */
-// am = { nodes:[{x,z}], els:[{n1,n2,EA,EI,rel:[kφ1,kφ2] (null – sztywno, 0 – przegub, >0 – podatność kNm/rad), nsub}], sups:[{node, ux,uz,ry, kx,kz,kr, ang}] }
+// am = { nodes:[{x,z}], els:[{n1,n2,EA,EI,GA,rel:[kφ1,kφ2] (null – sztywno, 0 – przegub, >0 – podatność kNm/rad), nsub}], sups:[{node, ux,uz,ry, kx,kz,kr, ang}] }
 F.build = function (am) {
   const nodes = am.nodes.map(n => ({ x: n.x, z: n.z }));
   const subs = [];        // podelementy
@@ -129,7 +130,7 @@ F.build = function (am) {
     const first = subs.length;
     for (let k = 0; k < ns; k++) {
       const r1 = k === 0 && e.rel ? e.rel[0] : null, r2 = k === ns - 1 && e.rel ? e.rel[1] : null;
-      subs.push({ el: ei, k, n1: ids[k], n2: ids[k + 1], L: L / ns, x0: L * k / ns, c, s, EA: e.EA, EI: e.EI, r1, r2 });
+      subs.push({ el: ei, k, n1: ids[k], n2: ids[k + 1], L: L / ns, x0: L * k / ns, c, s, EA: e.EA, EI: e.EI, GA: e.GA || 0, r1, r2 });
     }
     elInfo.push({ L, c, s, ns, first, ids });
   });
@@ -155,7 +156,7 @@ function rcm(adj) {
 }
 // macierz lokalna z uwzględnieniem połączeń podatnych / przegubów na końcach (kondensacja dodatkowych DOF obrotu końca pręta)
 function prepSub(q) {
-  const k6 = kLocal(q.EA, q.EI, q.L);
+  const k6 = kLocal(q.EA, q.EI, q.L, q.GA);
   const extra = [];
   if (q.r1 !== null && q.r1 !== undefined) extra.push({ at: 2, k: q.r1 });
   if (q.r2 !== null && q.r2 !== undefined) extra.push({ at: 5, k: q.r2 });

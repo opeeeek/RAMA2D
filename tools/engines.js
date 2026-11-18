@@ -6,6 +6,7 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const ROOT = path.resolve(__dirname, '..');
+const PATCH = require('./patches.js');
 
 const DEFS = {
   BZB: { file: 'BelkaZB', pick: s => s.includes('root.EC2 = API'), ret: 'EC2' },
@@ -29,7 +30,7 @@ function engineCode(key, html) {
 function bundle(srcDir) {
   const dir = srcDir || path.join(ROOT, 'modules', 'src');
   const lines = ['/* silniki modułów (wydzielone automatycznie z modules/src/*.html przez tools/engines.js) */', 'var RAMA_ENG = {};'];
-  Object.keys(DEFS).forEach(k => { const html = fs.readFileSync(path.join(dir, DEFS[k].file + '.html'), 'utf8'); lines.push(`RAMA_ENG.${k} = ${engineCode(k, html)};`); });
+  Object.keys(DEFS).forEach(k => { const html = PATCH.patched(DEFS[k].file, dir); lines.push(`RAMA_ENG.${k} = ${engineCode(k, html)};`); });
   return lines.join('\n');
 }
 // załadowanie w Node (testy)

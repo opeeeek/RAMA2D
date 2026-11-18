@@ -24,6 +24,7 @@ M.defaultSettings = () => ({
   comb: '610ab', gG: 1.35, gGinf: 1.0, gQ: 1.5, xi: 0.85, accPsi: 'psi1',
   order: 1,            // 1 – analiza I rzędu, 2 – II rzędu (P-Δ) dla kombinacji SGN
   nsub: 8,             // podział prętów na podelementy
+  shear: 'auto',       // odkształcenia postaciowe (ścinanie): 'auto' – pręty drewniane (jak BelkaDR), 'all' – wszystkie, 'none' – pominięte
   buck: true,          // analiza wyboczeniowa (α_cr) dla kombinacji SGN
   grid: 0.5, snap: true,
 });
@@ -170,6 +171,7 @@ M.prepare = function (P) {
   const am = {
     nodes: nodes.map(n => ({ x: n.x, z: n.z })),
     els: bars.map((b, i) => ({ n1: nIdx.get(b.n1), n2: nIdx.get(b.n2), EA: props[i].EA, EI: props[i].EI, label: b.id,
+      GA: P.settings.shear === 'all' || (P.settings.shear !== 'none' && props[i].mat === 'D') ? props[i].GA : 0,
       rel: b.type === 'truss' ? [0, 0] : [b.rel[0], b.rel[1]], nsub: b.type === 'truss' ? 4 : nsub })),
     sups,
   };

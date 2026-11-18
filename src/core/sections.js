@@ -75,6 +75,7 @@ SEC.props = function (s) {
       out.h = (rot ? pr.b : pr.h) / 1000; out.b = (rot ? pr.h : pr.b) / 1000;
       out.E = ENG().SST.U.E * 1e3; out.G = ENG().SST.U.G * 1e3;
       out.g = pr.gk; out.name = pr.nazwa; out.W = (rot ? pr.Wel_z : pr.Wel_y) * 1e-9;
+      out.As = ((rot ? pr.Avy : pr.Avz) || 5 / 6 * pr.A) * 1e-6;          // pole czynne przy ścinaniu
     } else if (s.mat === 'D') {
       const m = SEC.timberMat(s.cls);
       out.E = m.E0m * 1e6; out.G = m.Gm * 1e6;
@@ -96,6 +97,8 @@ SEC.props = function (s) {
       else { out.A = b * h; out.I = b * h ** 3 / 12; out.Iz = h * b ** 3 / 12; out.h = h; out.b = b; }
       out.g = SEC.GAMMA_C * out.A;
     }
+    if (!out.As) out.As = (s.mat !== 'S' && s.shape === 'T' ? +s.b * +s.h * 1e-6 : out.A) * 5 / 6;   // κ = 5/6 (przekrój prostokątny), teownik – środnik
+    out.GA = out.G * out.As;
     const k = +s.kEI > 0 ? +s.kEI : 1;
     out.EA = out.E * out.A; out.EI = out.E * out.I * k; out.alpha = SEC.ALPHA_T[s.mat] || 1e-5;
     if (!(out.A > 0 && out.I > 0 && out.E > 0)) { out.ok = false; out.err = 'Niepoprawne wymiary przekroju.'; }
